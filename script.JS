@@ -18762,7 +18762,6 @@ ${chatContext || '（没有聊天记录）'}
                     checkbox.onchange = () => {
                         label.style.background = checkbox.checked ? '#f0f0f5' : 'transparent';
                         updateLorebookCount();
-                        saveChatDetail();
                     };
                     
                     const name = document.createElement('span');
@@ -18899,7 +18898,6 @@ ${chatContext || '（没有聊天记录）'}
                     el.classList.add('selected');
                 }
             });
-            saveChatDetail();
         }
 
         function hideChatDetail() {
@@ -19045,6 +19043,26 @@ async function saveChatDetail() {
     }
     // 刷新列表（如果此时微信列表可见）
     // ...
+}
+
+// 保存设置按钮（带Toast反馈）
+async function saveChatDetailWithToast() {
+    const btn = document.getElementById('detail-save-btn');
+    if (btn) {
+        btn.style.pointerEvents = 'none';
+        btn.style.opacity = '0.4';
+    }
+    try {
+        await saveChatDetail();
+        showToast('✅ 设置已保存');
+    } catch (e) {
+        console.error('[saveChatDetailWithToast] 保存失败:', e);
+    } finally {
+        if (btn) {
+            btn.style.pointerEvents = '';
+            btn.style.opacity = '1';
+        }
+    }
 }
 
 // 显示挂载表情包库弹窗
@@ -44131,7 +44149,7 @@ function showVerificationCodeModal(code) {
         notification.style.transform = 'translateX(-50%) translateY(0)';
     }, 10);
     
-    // 3秒后自动消失
+    // 10秒后自动消失
     setTimeout(() => {
         notification.style.transform = 'translateX(-50%) translateY(-100px)';
         setTimeout(() => {
@@ -44139,7 +44157,7 @@ function showVerificationCodeModal(code) {
                 document.body.removeChild(notification);
             }
         }, 300);
-    }, 3000);
+    }, 10000);
     
     console.log('[验证码弹窗] ✅ 验证码通知已显示！验证码:', code);
 }

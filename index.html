@@ -25,6 +25,23 @@
     <!-- 预加载关键资源 -->
     <link rel="preload" href="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js" as="script">
     
+    <!-- 🔧 安卓系统字体缩放补偿：在页面渲染前检测并修正，防止大字体撑坏布局 -->
+    <script>
+    (function() {
+        // 默认浏览器根字体 16px，安卓系统大字体会把它放大
+        var html = document.documentElement;
+        var s = html.style.fontSize;
+        html.style.fontSize = '16px';
+        var actual = parseFloat(getComputedStyle(html).fontSize);
+        if (!s) html.style.removeProperty('font-size');
+        else html.style.fontSize = s;
+        if (actual && Math.abs(actual - 16) > 0.5) {
+            // 系统缩放了字体，反向补偿
+            html.style.fontSize = (16 / actual * 100) + '%';
+            console.log('[FontScale] 检测到安卓系统字体缩放 ' + actual + 'px，已补偿为 ' + (16 / actual * 100).toFixed(1) + '%');
+        }
+    })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
     <!-- SortableJS 用于拖拽排序 -->
@@ -2369,7 +2386,9 @@
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </div>
             <div class="wechat-title">聊天详情</div>
-            <div style="width:40px;"></div>
+            <div id="detail-save-btn" onclick="saveChatDetailWithToast()" style="width:40px; display:flex; justify-content:flex-end; cursor:pointer; -webkit-tap-highlight-color:transparent;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            </div>
         </div>
         
         <div style="flex:1; overflow-y:auto;">
@@ -2389,7 +2408,7 @@
                 <div class="detail-item">
                     <div>备注</div>
                     <div style="display:flex; align-items:center; gap:6px; flex:1; justify-content:flex-end;">
-                        <input type="text" id="detail-char-remark" placeholder="设置备注名" onchange="saveChatDetail()" style="border:none; background:transparent; text-align:right; font-size:14px; color:#333; outline:none; width:auto; max-width:180px;">
+                        <input type="text" id="detail-char-remark" placeholder="设置备注名" style="border:none; background:transparent; text-align:right; font-size:14px; color:#333; outline:none; width:auto; max-width:180px;">
                         <div style="font-size:12px; color:#999;" id="detail-char-realname">原名: ???</div>
                     </div>
                 </div>
@@ -2399,7 +2418,7 @@
                         <div style="font-size:11px; color:#999;">自定义聊天输入框的占位文字</div>
                     </div>
                     <div style="flex:1; display:flex; justify-content:flex-end;">
-                        <input type="text" id="detail-input-placeholder" placeholder="发送消息..." onchange="saveChatDetail()" style="border:none; background:transparent; text-align:right; font-size:14px; color:#333; outline:none; width:auto; max-width:180px;">
+                        <input type="text" id="detail-input-placeholder" placeholder="发送消息..." style="border:none; background:transparent; text-align:right; font-size:14px; color:#333; outline:none; width:auto; max-width:180px;">
                     </div>
                 </div>
             </div>
@@ -2442,13 +2461,13 @@
                 <div class="detail-item">
                     <div>主动发消息</div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-auto-chat-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-auto-chat-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
                 <div class="detail-item">
                     <div>触发间隔 (分钟)</div>
-                    <input type="number" id="detail-auto-chat-interval" placeholder="30" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;" onchange="saveChatDetail()">
+                    <input type="number" id="detail-auto-chat-interval" placeholder="30" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;">
                 </div>
             </div>
 
@@ -2460,7 +2479,7 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">开启后角色用人设语言回复并附中文翻译</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-foreign-lang-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-foreign-lang-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2480,7 +2499,7 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">角色可根据剧情尝试登录你的账号</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-allow-check-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-allow-check-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2490,7 +2509,7 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">查岗的角色可以操作你的账号</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-allow-shura-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-allow-shura-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2512,7 +2531,7 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">角色可从头像库自动更换头像，或发送情头邀请</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-allow-avatar-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-allow-avatar-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2532,7 +2551,7 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">角色会在自己的手机上自主产生活动数据</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-allow-autonomous-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-allow-autonomous-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2553,13 +2572,13 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">定时调用API让角色自主产生手机活动</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-scheduled-activity-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-scheduled-activity-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
                 <div class="detail-item">
                     <div>触发间隔 (分钟)</div>
-                    <input type="number" id="detail-scheduled-activity-interval" placeholder="30" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;" onchange="saveChatDetail()">
+                    <input type="number" id="detail-scheduled-activity-interval" placeholder="30" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;">
                 </div>
                 <div style="padding:12px 16px; font-size:12px; color:#999; line-height:1.6; background:#f8f8f8; border-radius:8px; margin:0 16px 12px 16px;">
                     <div style="font-weight:600; color:#666; margin-bottom:6px;">功能说明：</div>
@@ -2577,7 +2596,7 @@
                         <div>朋友圈频率</div>
                         <div style="font-size:12px; color:#999; line-height:1.4;">角色自动发朋友圈的频率</div>
                     </div>
-                    <select id="detail-moments-frequency" onchange="saveChatDetail()" style="border:1px solid #e0e0e0; background:#fff; padding:6px 12px; border-radius:8px; font-size:14px; color:#333; outline:none; -webkit-appearance:none; appearance:none; cursor:pointer;">
+                    <select id="detail-moments-frequency" style="border:1px solid #e0e0e0; background:#fff; padding:6px 12px; border-radius:8px; font-size:14px; color:#333; outline:none; -webkit-appearance:none; appearance:none; cursor:pointer;">
                         <option value="off">关闭</option>
                         <option value="low">低</option>
                         <option value="medium">中</option>
@@ -2591,7 +2610,7 @@
                 <div class="detail-item">
                     <div>上下文条数</div>
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <input type="number" id="detail-context-count" value="20" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;" onchange="saveChatDetail()">
+                        <input type="number" id="detail-context-count" value="20" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;">
                         <span style="font-size:12px; color:#999;">条</span>
                     </div>
                 </div>
@@ -2608,9 +2627,9 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">AI每次回复的消息条数范围</div>
                     </div>
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <input type="number" id="detail-reply-min-count" value="1" min="1" max="50" style="border:1px solid #e0e0e0; background:#fff; width:50px; text-align:center; font-size:16px; color:#333; outline:none; padding:4px; border-radius:6px;" onchange="saveChatDetail()">
+                        <input type="number" id="detail-reply-min-count" value="1" min="1" max="50" style="border:1px solid #e0e0e0; background:#fff; width:50px; text-align:center; font-size:16px; color:#333; outline:none; padding:4px; border-radius:6px;">
                         <span style="font-size:14px; color:#999;">~</span>
-                        <input type="number" id="detail-reply-max-count" value="3" min="1" max="50" style="border:1px solid #e0e0e0; background:#fff; width:50px; text-align:center; font-size:16px; color:#333; outline:none; padding:4px; border-radius:6px;" onchange="saveChatDetail()">
+                        <input type="number" id="detail-reply-max-count" value="3" min="1" max="50" style="border:1px solid #e0e0e0; background:#fff; width:50px; text-align:center; font-size:16px; color:#333; outline:none; padding:4px; border-radius:6px;">
                         <span style="font-size:12px; color:#999;">条</span>
                     </div>
                 </div>
@@ -2678,13 +2697,13 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">AI自动总结聊天内容到收藏</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-auto-summary-switch" onchange="saveChatDetail()">
+                        <input type="checkbox" id="detail-auto-summary-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
                 <div class="detail-item">
                     <div>每多少条总结</div>
-                    <input type="number" id="detail-summary-interval" placeholder="50" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;" onchange="saveChatDetail()">
+                    <input type="number" id="detail-summary-interval" placeholder="50" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;">
                 </div>
                 <div class="detail-item" onclick="showChatSummaries('private')" style="cursor:pointer;">
                     <div>查看总结记录</div>
