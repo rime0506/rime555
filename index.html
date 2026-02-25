@@ -5038,15 +5038,25 @@
         </div>
         
         <div class="chat-footer" id="offline-chat-footer" style="background:#fff; border-top:1px solid #f0f0f0;">
-            <div class="chat-input-bar" style="display:flex; align-items:center; gap:10px;">
-                <textarea id="offline-chat-input-box" class="chat-input" placeholder="输入消息..." rows="1" onkeydown="handleOfflineChatInputKey(event)" oninput="handleOfflineChatInputChange(this)" onfocus="onOfflineChatInputFocus()" style="flex:1; max-height:130px; resize:none;"></textarea>
-                <button onclick="rerollOfflineMessage()" style="width:32px; height:32px; border-radius:50%; border:1px solid #e8e8e8; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all 0.2s;" title="重新生成">
-                    <svg viewBox="0 0 24 24" style="width:18px; height:18px; stroke:#ffb3d1; fill:none; stroke-width:2;">
+            <!-- 接收回复按钮（独立一行） -->
+            <div id="offline-reply-bar" style="display:flex; justify-content:center; padding:8px 16px 4px; gap:8px;">
+                <button id="offline-btn-receive" onclick="requestOfflineReply()" style="display:flex; align-items:center; gap:6px; padding:8px 20px; border-radius:20px; border:1.5px solid #ffb3d1; background:#fff; color:#e0789b; font-size:14px; font-weight:500; cursor:pointer; transition:all 0.2s; font-family:-apple-system, BlinkMacSystemFont, sans-serif;">
+                    <svg viewBox="0 0 24 24" style="width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2;">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span id="offline-btn-receive-text">接收回复</span>
+                </button>
+                <button onclick="rerollOfflineMessage()" style="display:flex; align-items:center; gap:6px; padding:8px 16px; border-radius:20px; border:1px solid #e8e8e8; background:#fff; color:#999; font-size:13px; cursor:pointer; transition:all 0.2s; font-family:-apple-system, BlinkMacSystemFont, sans-serif;" title="重新生成">
+                    <svg viewBox="0 0 24 24" style="width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:2;">
                         <polyline points="23 4 23 10 17 10"></polyline>
                         <polyline points="1 20 1 14 7 14"></polyline>
                         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                     </svg>
+                    重新生成
                 </button>
+            </div>
+            <div class="chat-input-bar" style="display:flex; align-items:center; gap:10px;">
+                <textarea id="offline-chat-input-box" class="chat-input" placeholder="输入消息..." rows="1" onkeydown="handleOfflineChatInputKey(event)" oninput="handleOfflineChatInputChange(this)" onfocus="onOfflineChatInputFocus()" style="flex:1; max-height:130px; resize:none;"></textarea>
                 <button id="offline-btn-send" onclick="sendOfflineMessage()" onmousedown="event.preventDefault()" style="width:32px; height:32px; border-radius:50%; background:#ffb3d1; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; opacity:0.4; transition:all 0.2s;">
                     <svg viewBox="0 0 24 24" style="width:16px; height:16px; stroke:#fff; fill:none; stroke-width:2;">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -5100,6 +5110,20 @@
                 <div style="font-size:15px; font-weight:500; color:#333; margin-bottom:4px;">自定义预设</div>
                 <div style="font-size:12px; color:#999; margin-bottom:12px;">追加到系统提示词末尾，可用于自定义场景、地点、规则等。留空则使用默认设定。</div>
                 <textarea id="offline-custom-preset" placeholder="例如：&#10;场景是在一家安静的咖啡厅里，窗外下着小雨...&#10;&#10;或者：&#10;请使用更加文学化的描写风格，多使用比喻和象征手法。" style="width:100%; min-height:150px; border:1px solid #e0e0e0; background:#fafafa; padding:12px; border-radius:8px; font-size:14px; color:#333; line-height:1.6; resize:vertical; outline:none; box-sizing:border-box; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;" onfocus="this.style.borderColor='#ffb3d1'" onblur="this.style.borderColor='#e0e0e0'"></textarea>
+            </div>
+
+            <!-- 自定义气泡CSS -->
+            <div style="background:#fff; border-radius:12px; padding:16px; margin-bottom:16px;">
+                <div style="font-size:15px; font-weight:500; color:#333; margin-bottom:4px;">自定义气泡CSS</div>
+                <div style="font-size:12px; color:#999; margin-bottom:12px; line-height:1.5;">
+                    可覆盖默认气泡样式。可用类名：<br>
+                    <code style="background:#f5f5f5; padding:1px 4px; border-radius:3px; font-size:11px;">.offline-msg-bubble</code> 所有气泡<br>
+                    <code style="background:#f5f5f5; padding:1px 4px; border-radius:3px; font-size:11px;">.offline-bubble-self</code> 自己的气泡<br>
+                    <code style="background:#f5f5f5; padding:1px 4px; border-radius:3px; font-size:11px;">.offline-bubble-other</code> 对方的气泡<br>
+                    <code style="background:#f5f5f5; padding:1px 4px; border-radius:3px; font-size:11px;">.offline-msg-row</code> 消息行<br>
+                    <code style="background:#f5f5f5; padding:1px 4px; border-radius:3px; font-size:11px;">.offline-msg-avatar</code> 头像
+                </div>
+                <textarea id="offline-custom-bubble-css" placeholder="例如：&#10;.offline-msg-bubble {&#10;  border-radius: 18px;&#10;  border: none;&#10;  box-shadow: 0 1px 3px rgba(0,0,0,0.1);&#10;}&#10;.offline-bubble-self {&#10;  background: #e8f5e9;&#10;}" style="width:100%; min-height:120px; border:1px solid #e0e0e0; background:#fafafa; padding:12px; border-radius:8px; font-size:13px; color:#333; line-height:1.6; resize:vertical; outline:none; box-sizing:border-box; font-family:'Courier New', monospace;" onfocus="this.style.borderColor='#ffb3d1'" onblur="this.style.borderColor='#e0e0e0'"></textarea>
             </div>
 
             <!-- 保存按钮 -->

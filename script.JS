@@ -346,6 +346,126 @@ db.version(81).stores({
     finance_data: '&key, updatedAt' // 财务数据：phone_balance, loanHistory, scratchHistory等
 });
 
+// ===== 角色内存缓存（性能优化：消除频繁 IndexedDB 读取）=====
+// 原理：启动时将 characters 表加载到内存 Map，代理读写方法
+// 读取走缓存（同步级速度），写入同时更新 DB + 缓存
+// 效果：消除每次操作 ~180 次 DB 读取，大幅提升流畅度
+const _charCache = new Map();
+let _charCacheReady = false;
+
+// 保存 Dexie 原始方法（代理实现中使用这些直接操作 DB）
+const _dbChar = {
+    get: db.characters.get.bind(db.characters),
+    toArray: db.characters.toArray.bind(db.characters),
+    put: db.characters.put.bind(db.characters),
+    add: db.characters.add.bind(db.characters),
+    update: db.characters.update.bind(db.characters),
+    delete: db.characters.delete.bind(db.characters),
+    bulkPut: db.characters.bulkPut.bind(db.characters),
+    filter: db.characters.filter.bind(db.characters),
+    where: db.characters.where.bind(db.characters),
+};
+
+// 启动时加载全部角色到缓存
+async function _initCharCache() {
+    try {
+        const all = await _dbChar.toArray();
+        all.forEach(c => _charCache.set(c.id, c));
+        _charCacheReady = true;
+        console.log(`[CharCache] ✅ 缓存就绪，共 ${_charCache.size} 个角色`);
+    } catch (e) {
+        console.error('[CharCache] ❌ 初始化失败，退化为直接读DB:', e);
+    }
+}
+_initCharCache(); // 立即启动（不依赖DOM）
+
+// --- 代理读取方法：缓存就绪时从内存读，否则回退DB ---
+db.characters.get = async function(id) {
+    if (_charCacheReady && id != null) {
+        return _charCache.get(typeof id === 'number' ? id : parseInt(id)) || null;
+    }
+    return _dbChar.get(id);
+};
+
+db.characters.toArray = async function() {
+    if (_charCacheReady) return Array.from(_charCache.values());
+    return _dbChar.toArray();
+};
+
+db.characters.filter = function(fn) {
+    if (_charCacheReady) {
+        const result = Array.from(_charCache.values()).filter(fn);
+        return { toArray: async () => result };
+    }
+    return _dbChar.filter(fn);
+};
+
+db.characters.where = function(field) {
+    // ":id" 是 Dexie 内部使用的主键查询（如 update/modify），必须走原始方法
+    if (_charCacheReady && field !== ':id') {
+        return {
+            equals: (val) => ({
+                toArray: async () => Array.from(_charCache.values()).filter(c => c[field] === val)
+            })
+        };
+    }
+    return _dbChar.where(field);
+};
+
+// --- 代理写入方法：写DB + 同步更新缓存 ---
+db.characters.put = async function(data) {
+    const key = await _dbChar.put(data);
+    if (data) {
+        const id = data.id || key;
+        if (id) { data.id = id; _charCache.set(id, data); }
+    }
+    return key;
+};
+
+db.characters.add = async function(data) {
+    const id = await _dbChar.add(data);
+    if (id) { data.id = id; _charCache.set(id, data); }
+    return id;
+};
+
+db.characters.update = async function(id, changes) {
+    const result = await _dbChar.update(id, changes);
+    if (_charCacheReady && result) {
+        const cached = _charCache.get(id);
+        if (cached) {
+            for (const [key, value] of Object.entries(changes)) {
+                const parts = key.split('.');
+                if (parts.length === 1) {
+                    cached[key] = value;
+                } else {
+                    let obj = cached;
+                    for (let i = 0; i < parts.length - 1; i++) {
+                        if (obj[parts[i]] == null || typeof obj[parts[i]] !== 'object') obj[parts[i]] = {};
+                        obj = obj[parts[i]];
+                    }
+                    obj[parts[parts.length - 1]] = value;
+                }
+            }
+        }
+    }
+    return result;
+};
+
+db.characters.delete = async function(id) {
+    const result = await _dbChar.delete(id);
+    _charCache.delete(typeof id === 'number' ? id : parseInt(id));
+    return result;
+};
+
+db.characters.bulkPut = async function(items) {
+    const result = await _dbChar.bulkPut(items);
+    // 批量导入后刷新整个缓存
+    _charCache.clear();
+    const all = await _dbChar.toArray();
+    all.forEach(c => _charCache.set(c.id, c));
+    return result;
+};
+
 // 📦 数据迁移：将 localStorage 中的电话和短信记录迁移到 IndexedDB
 async function migratePhoneAndSmsToIndexedDB() {
     const migrationKey = 'phone_sms_migrated_to_indexeddb';
@@ -364,7 +484,7 @@ async function migratePhoneAndSmsToIndexedDB() {
         if (phoneRecents.length > 0) {
             console.log(`[Migration] 迁移 ${phoneRecents.length} 条电话记录...`);
             for (const record of phoneRecents) {
-                await db.phone_recents.add({
+                await db.phone_recents.put({
                     accountId: currentAccountId,
                     charId: null, // 旧数据没有 charId
                     name: record.name,
@@ -374,7 +494,7 @@ async function migratePhoneAndSmsToIndexedDB() {
                     isBlocked: record.isBlocked || false
                 });
             }
-            // 清理旧数据
+            // 确认写入成功后再清理旧数据
             localStorage.removeItem('phone_recents');
             console.log('[Migration] ✅ 电话记录迁移完成');
         }
@@ -388,7 +508,7 @@ async function migratePhoneAndSmsToIndexedDB() {
         if (smsMessages.length > 0) {
             console.log(`[Migration] 迁移 ${smsMessages.length} 条短信记录...`);
             for (const msg of smsMessages) {
-                await db.sms_messages.add({
+                await db.sms_messages.put({
                     accountId: currentAccountId,
                     charId: null, // 旧数据没有 charId
                     sender: msg.sender,
@@ -402,7 +522,7 @@ async function migratePhoneAndSmsToIndexedDB() {
                     receiverId: msg.receiverId
                 });
             }
-            // 清理旧数据
+            // 确认写入成功后再清理旧数据
             localStorage.removeItem('sms_messages');
             console.log('[Migration] ✅ 短信记录迁移完成');
         }
@@ -489,40 +609,111 @@ async function migrateOfflineAndFinanceToIndexedDB() {
 
 // ==================== 🛡️ 数据安全层：防丢数据核心工具 ====================
 
-// 🔧 安全写入 IndexedDB，带重试 + 用户提醒
+// 🛡️ 连续写入失败计数器（用于升级警告）
+let _dbWriteFailCount = 0;
+const _DB_FAIL_ESCALATE_THRESHOLD = 3; // 连续失败N次后显示持久红色横幅
+
+// 🛡️ 显示持久性数据丢失风险横幅（不会自动消失，用户必须手动关闭）
+function showDataLossBanner(message) {
+    // 防止重复创建
+    if (document.getElementById('data-loss-banner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'data-loss-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;width:100%;z-index:999999;background:#d32f2f;color:#fff;padding:12px 40px 12px 16px;font-size:14px;line-height:1.4;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+    banner.innerHTML = `⚠️ <b>数据保存异常</b>：${message}<br><small>请立即前往设置 → 导出备份，防止数据丢失！</small>`;
+    const closeBtn = document.createElement('div');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = 'position:absolute;top:8px;right:12px;cursor:pointer;font-size:22px;font-weight:bold;';
+    closeBtn.onclick = () => banner.remove();
+    banner.appendChild(closeBtn);
+    document.body.appendChild(banner);
+}
+
+// 🛡️ 紧急备份到 localStorage（当 IndexedDB 写入失败时的最后手段）
+function emergencyLocalStorageBackup(label, data) {
+    try {
+        const backupKey = '_emergency_backup_' + Date.now();
+        const backupPayload = {
+            label: label,
+            time: new Date().toISOString(),
+            data: data
+        };
+        localStorage.setItem(backupKey, JSON.stringify(backupPayload));
+        console.warn(`[SafeDB] 🆘 紧急备份到 localStorage: ${backupKey}`);
+        return true;
+    } catch (e) {
+        console.error('[SafeDB] 🆘 紧急备份也失败了:', e);
+        return false;
+    }
+}
+
+// 🛡️ 安全写入 localStorage（自带 try/catch + quota 检测 + 提示）
+function safeLocalStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value));
+        return true;
+    } catch (e) {
+        console.error(`[SafeLS] ❌ localStorage写入失败 key=${key}:`, e.message);
+        if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+            showDataLossBanner('localStorage 存储空间已满，数据无法保存！');
+        }
+        try { if (typeof showToast === 'function') showToast('⚠️ 本地存储写入失败: ' + key); } catch(_) {}
+        return false;
+    }
+}
+
+// 🔧 安全写入 IndexedDB，带重试 + 用户提醒 + 紧急兜底
 // maxRetries: 最大重试次数, delayMs: 重试间隔毫秒
 async function safeDbPut(table, data, label, maxRetries = 3, delayMs = 500) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             await table.put(data);
-            return true; // 写入成功
+            // 写入成功，重置失败计数
+            if (_dbWriteFailCount > 0) {
+                _dbWriteFailCount = 0;
+                const banner = document.getElementById('data-loss-banner');
+                if (banner) banner.remove(); // 恢复后移除横幅
+            }
+            return true;
         } catch (err) {
             console.error(`[SafeDB] ❌ ${label} 写入失败 (第${attempt}次):`, err.message);
             
             // 检查是否是配额不足
             if (err.name === 'QuotaExceededError' || (err.inner && err.inner.name === 'QuotaExceededError')) {
                 console.error('[SafeDB] ⚠️ 存储空间不足！');
+                _dbWriteFailCount++;
+                // 紧急备份到 localStorage
+                emergencyLocalStorageBackup(label, data);
+                showDataLossBanner('存储空间不足，数据可能无法保存！');
                 try {
                     if (typeof showToast === 'function') {
                         showToast('⚠️ 存储空间不足，部分数据可能无法保存！请导出备份后清理数据。');
-                    } else {
-                        alert('⚠️ 存储空间不足，部分数据可能无法保存！请尽快导出备份。');
                     }
                 } catch(_) {}
-                return false; // 配额满了不重试
+                return false;
             }
             
             if (attempt < maxRetries) {
-                await new Promise(r => setTimeout(r, delayMs * attempt)); // 递增等待
+                await new Promise(r => setTimeout(r, delayMs * attempt));
             }
         }
     }
     
     // 所有重试都失败了
-    console.error(`[SafeDB] ❌❌ ${label} 写入彻底失败（已重试${maxRetries}次）`);
+    _dbWriteFailCount++;
+    console.error(`[SafeDB] ❌❌ ${label} 写入彻底失败（已重试${maxRetries}次），连续失败${_dbWriteFailCount}次`);
+    
+    // 紧急备份到 localStorage
+    emergencyLocalStorageBackup(label, data);
+    
+    // 连续多次失败：显示持久红色横幅（不会自动消失）
+    if (_dbWriteFailCount >= _DB_FAIL_ESCALATE_THRESHOLD) {
+        showDataLossBanner(`IndexedDB 连续 ${_dbWriteFailCount} 次写入失败，数据有丢失风险！`);
+    }
+    
     try {
         if (typeof showToast === 'function') {
-            showToast('⚠️ 数据保存失败，请检查存储空间或刷新页面重试');
+            showToast('⚠️ 数据保存失败，请尽快导出备份！', 5000);
         }
     } catch(_) {}
     return false;
@@ -540,6 +731,12 @@ async function safeDexieUpdate(table, id, payload, label, maxRetries = 3, delayM
         try {
             const updated = await table.update(id, payload);
             if (updated) {
+                // 写入成功，重置失败计数
+                if (_dbWriteFailCount > 0) {
+                    _dbWriteFailCount = 0;
+                    const banner = document.getElementById('data-loss-banner');
+                    if (banner) banner.remove();
+                }
                 return true; // 更新成功
             } else {
                 console.warn(`[SafeDexieUpdate] ⚠️ ${label || ''} 更新返回0，记录可能不存在 (id=${id})`);
@@ -551,6 +748,9 @@ async function safeDexieUpdate(table, id, payload, label, maxRetries = 3, delayM
             // 检查是否是配额不足
             if (err.name === 'QuotaExceededError' || (err.inner && err.inner.name === 'QuotaExceededError')) {
                 console.error('[SafeDexieUpdate] ⚠️ 存储空间不足！');
+                _dbWriteFailCount++;
+                emergencyLocalStorageBackup(label || `update-${id}`, payload);
+                showDataLossBanner('存储空间不足，数据可能无法保存！');
                 try {
                     if (typeof showToast === 'function') {
                         showToast('⚠️ 存储空间不足，部分数据可能无法保存！请导出备份后清理数据。');
@@ -565,10 +765,17 @@ async function safeDexieUpdate(table, id, payload, label, maxRetries = 3, delayM
         }
     }
     
-    console.error(`[SafeDexieUpdate] ❌❌ ${label || ''} 更新彻底失败（已重试${maxRetries}次）`);
+    _dbWriteFailCount++;
+    console.error(`[SafeDexieUpdate] ❌❌ ${label || ''} 更新彻底失败（已重试${maxRetries}次），连续失败${_dbWriteFailCount}次`);
+    emergencyLocalStorageBackup(label || `update-${id}`, payload);
+    
+    if (_dbWriteFailCount >= _DB_FAIL_ESCALATE_THRESHOLD) {
+        showDataLossBanner(`IndexedDB 连续 ${_dbWriteFailCount} 次写入失败，数据有丢失风险！`);
+    }
+    
     try {
         if (typeof showToast === 'function') {
-            showToast('⚠️ 数据保存失败，请检查存储空间或刷新页面重试');
+            showToast('⚠️ 数据保存失败，请尽快导出备份！', 5000);
         }
     } catch(_) {}
     return false;
@@ -695,14 +902,88 @@ async function flushDirtySaves() {
 // 每60秒执行一次脏数据刷盘
 setInterval(flushDirtySaves, 60000);
 
+// 🛡️ 同步紧急保存（beforeunload 中 async 函数不可靠，浏览器可能不等待完成）
+function emergencySyncFlush() {
+    if (_pendingDirtySaves.size === 0) return;
+    
+    // 同步写入 localStorage 作为紧急兜底（IndexedDB 是异步的，不能保证 beforeunload 中完成）
+    try {
+        const emergencyData = {};
+        for (const [charId, data] of _pendingDirtySaves.entries()) {
+            emergencyData[charId] = {
+                accountId: data.accountId,
+                history: data.history,
+                timestamp: data.timestamp
+            };
+        }
+        localStorage.setItem('_emergency_dirty_saves', JSON.stringify(emergencyData));
+        console.log(`[EmergencyFlush] 🆘 已将 ${_pendingDirtySaves.size} 条脏数据同步写入 localStorage`);
+    } catch (e) {
+        console.error('[EmergencyFlush] ❌ localStorage 紧急保存也失败:', e);
+    }
+    
+    // 同时尝试异步 IndexedDB 刷盘（不保证能完成）
+    flushDirtySaves();
+}
+
+// 🛡️ 启动时恢复紧急保存的脏数据
+async function recoverEmergencyDirtySaves() {
+    try {
+        const raw = localStorage.getItem('_emergency_dirty_saves');
+        if (!raw) return;
+        
+        const emergencyData = JSON.parse(raw);
+        let recoveredCount = 0;
+        
+        for (const [charId, data] of Object.entries(emergencyData)) {
+            try {
+                const numCharId = parseInt(charId);
+                const freshChar = await db.characters.get(numCharId || charId);
+                if (!freshChar) continue;
+                
+                const dbHistory = data.accountId 
+                    ? (freshChar.chat_history_by_user?.[data.accountId] || [])
+                    : (freshChar.chat_history || []);
+                
+                // 只有紧急数据比 DB 中的更新（更多消息）时才恢复
+                if (data.history && data.history.length > dbHistory.length) {
+                    const updatePayload = {};
+                    if (data.accountId) {
+                        const merged = { ...(freshChar.chat_history_by_user || {}) };
+                        merged[data.accountId] = data.history;
+                        updatePayload.chat_history_by_user = merged;
+                    } else {
+                        updatePayload.chat_history = data.history;
+                    }
+                    await db.characters.update(numCharId || charId, updatePayload);
+                    recoveredCount++;
+                    console.log(`[EmergencyRecover] ✅ 已恢复 ${freshChar.name || charId} 的聊天记录（${data.history.length}条消息）`);
+                }
+            } catch (e) {
+                console.error(`[EmergencyRecover] ❌ 恢复 charId=${charId} 失败:`, e);
+            }
+        }
+        
+        // 恢复完毕后清除紧急数据
+        localStorage.removeItem('_emergency_dirty_saves');
+        if (recoveredCount > 0) {
+            console.log(`[EmergencyRecover] 🎉 共恢复 ${recoveredCount} 条紧急保存的聊天记录`);
+            try { showToast(`已恢复 ${recoveredCount} 条上次未保存的聊天记录`); } catch(_) {}
+        }
+    } catch (e) {
+        console.error('[EmergencyRecover] ❌ 紧急数据恢复失败:', e);
+        localStorage.removeItem('_emergency_dirty_saves');
+    }
+}
+
 // 页面关闭/隐藏时立即刷盘
 window.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-        flushDirtySaves();
+        emergencySyncFlush();
     }
 });
 window.addEventListener('beforeunload', () => {
-    flushDirtySaves();
+    emergencySyncFlush();
 });
 
 // 启动时检查存储空间
@@ -882,7 +1163,15 @@ async function saveFinanceData(key, value) {
             // ========== 请求持久化存储，防止浏览器自动清理数据 ==========
             if (navigator.storage && navigator.storage.persist) {
                 navigator.storage.persist().then(granted => {
-                    console.log(granted ? '[Storage] ✓ 已获得持久化存储权限' : '[Storage] ✗ 持久化存储请求被拒绝');
+                    if (granted) {
+                        console.log('[Storage] ✓ 已获得持久化存储权限');
+                    } else {
+                        console.warn('[Storage] ✗ 持久化存储请求被拒绝，浏览器可能在存储压力时自动清理数据');
+                        // 未获得持久化权限时，在控制台提醒（不干扰用户）
+                        // 建议用户将站点添加到主屏幕或标记为书签以提高持久化概率
+                    }
+                }).catch(e => {
+                    console.warn('[Storage] 持久化存储请求失败:', e);
                 });
             }
 
@@ -926,6 +1215,9 @@ async function saveFinanceData(key, value) {
                 await migrateAccountData();
                 await migratePhoneAndSmsToIndexedDB();
                 await migrateOfflineAndFinanceToIndexedDB();
+                
+                // 🛡️ 恢复上次页面关闭时未保存的紧急数据
+                await recoverEmergencyDirtySaves();
                 
                 // 加载衣柜人物（非关键UI）
                 await loadWardrobeCharacter();
@@ -2055,12 +2347,16 @@ async function saveFinanceData(key, value) {
                     
                     // 导入 localStorage 数据（全量恢复）
                     if (importData.localStorage) {
+                        let importFailCount = 0;
                         Object.keys(importData.localStorage).forEach(key => {
                             const value = importData.localStorage[key];
                             if (value !== null && value !== undefined) {
-                                localStorage.setItem(key, value);
+                                if (!safeLocalStorageSet(key, value)) importFailCount++;
                             }
                         });
+                        if (importFailCount > 0) {
+                            console.warn(`[Import] ⚠️ ${importFailCount} 个 localStorage 项导入失败`);
+                        }
                     }
                 }
                 
@@ -2203,7 +2499,7 @@ async function saveFinanceData(key, value) {
                 // 最多保留100条通知
                 if (list.length > 100) list.pop();
                 
-                localStorage.setItem(`notifications_${currentUserId}`, JSON.stringify(list));
+                safeLocalStorageSet(`notifications_${currentUserId}`, JSON.stringify(list));
                 return newNotif;
             } catch (err) {
                 console.error('添加通知失败:', err);
@@ -2347,7 +2643,7 @@ async function saveFinanceData(key, value) {
                 const notif = list.find(n => n.id === id);
                 if (notif) {
                     notif.is_read = true;
-                    localStorage.setItem(`notifications_${currentUserId}`, JSON.stringify(list));
+                    safeLocalStorageSet(`notifications_${currentUserId}`, JSON.stringify(list));
                 }
                 
                 // 重新获取刷新列表
@@ -3064,7 +3360,7 @@ async function saveFinanceData(key, value) {
         // 已验证过的角色ID集合（登录一次后不再要求输入密码，持久化到localStorage）
         const fpWechatVerified = new Set(JSON.parse(localStorage.getItem('fpWechatVerified') || '[]'));
         function saveFpWechatVerified() {
-            localStorage.setItem('fpWechatVerified', JSON.stringify([...fpWechatVerified]));
+            safeLocalStorageSet('fpWechatVerified', JSON.stringify([...fpWechatVerified]));
         }
         
         // 第四步：在角色手机桌面点击WeChat → 显示登录框（已验证过则直接进入）
@@ -8226,7 +8522,7 @@ async function installApp(appId, desktopIconId, showFunction) {
             desktopIconId: desktopIconId,
             showFunction: showFunction
         };
-        localStorage.setItem('installedApps', JSON.stringify(installedApps));
+        safeLocalStorageSet('installedApps', JSON.stringify(installedApps));
         
         return true;
     } catch (error) {
@@ -8251,7 +8547,7 @@ async function uninstallApp(appId, desktopIconId) {
         // 从 localStorage 删除
         const installedApps = JSON.parse(localStorage.getItem('installedApps') || '{}');
         delete installedApps[appId];
-        localStorage.setItem('installedApps', JSON.stringify(installedApps));
+        safeLocalStorageSet('installedApps', JSON.stringify(installedApps));
         
         return true;
     } catch (error) {
@@ -11588,7 +11884,7 @@ async function showWechatRegisterPage() {
                 if (users.length > 0) {
                     myChar = users[0];
                     currentMyCharId = myChar.id;
-                    localStorage.setItem('current_my_char_id', currentMyCharId);
+                    safeLocalStorageSet('current_my_char_id', currentMyCharId);
                 }
             }
             
@@ -11957,7 +12253,7 @@ async function showWechatRegisterPage() {
         // 移除已登录的角色账号
         async function removeRoleAccount(roleId) {
             loggedInRoleAccounts = loggedInRoleAccounts.filter(id => id !== roleId);
-            localStorage.setItem('logged_in_role_accounts', JSON.stringify(loggedInRoleAccounts));
+            safeLocalStorageSet('logged_in_role_accounts', JSON.stringify(loggedInRoleAccounts));
             
             // 如果正在查看这个账号，切回用户账号
             if (isViewingRoleAccount && currentViewingRoleAccountId === roleId) {
@@ -12024,7 +12320,7 @@ async function showWechatRegisterPage() {
             
             // 登录成功，添加到列表
             loggedInRoleAccounts.push(roleIdStr);
-            localStorage.setItem('logged_in_role_accounts', JSON.stringify(loggedInRoleAccounts));
+            safeLocalStorageSet('logged_in_role_accounts', JSON.stringify(loggedInRoleAccounts));
             
             // 显示加载提示
             errorEl.style.color = 'var(--ins-pink)';
@@ -13018,18 +13314,12 @@ ${loreContext}
         }
 
         // 获取角色的聊天记录（按账号隔离）
+        // 🔧 性能优化：直接返回原数组引用，不再每次拷贝（拷贝大数组开销很大）
         function getChatHistory(char, accountId) {
-            let history;
             if (!accountId) {
-                history = char.chat_history || [];
-            } else {
-                // 直接从按账号隔离的结构中读取，不再自动把旧数据复制给任意账号
-                history = char.chat_history_by_user?.[accountId] || [];
+                return char.chat_history || [];
             }
-            // 🔧 修复：不再按时间排序，直接返回数组原始顺序
-            // 因为快进时间和真实时间混合会导致时间戳非线性，按时间排序会破坏正确的消息顺序
-            // 消息 push 进数组的顺序就是正确的显示顺序
-            return [...history];
+            return char.chat_history_by_user?.[accountId] || [];
         }
 
         // 设置角色的聊天记录（按账号隔离）
@@ -13181,7 +13471,7 @@ ${loreContext}
             }
             
             currentMyCharId = id;
-            localStorage.setItem('current_my_char_id', id);
+            safeLocalStorageSet('current_my_char_id', id);
             window.originalMyCharIdBeforeRoleView = null; // 清除保存的ID
             
             closeModal('switch-account-modal');
@@ -13293,35 +13583,23 @@ ${loreContext}
             // 合并好友和群聊列表
             let allItems = [...friends.map(f => ({...f, _isGroup: false})), ...groupItems];
             
-            // 排序逻辑：置顶 > 最后消息时间 > 更新时间
+            // 🔧 性能优化：预计算排序键（避免排序比较器中重复调用 getChatHistory）
+            for (const item of allItems) {
+                item._pinned = item._isGroup ? item.is_pinned : getCharPinned(item, accountId);
+                if (item._isGroup) {
+                    const h = item.chat_history || [];
+                    item._lastTime = h.length > 0 ? h[h.length - 1].time : (item.updated_at || item.created_at || 0);
+                } else {
+                    const h = getChatHistory(item, accountId);
+                    item._lastTime = (h && h.length > 0) ? h[h.length - 1].time : (item.updated_at || 0);
+                }
+            }
+            
+            // 排序逻辑：置顶 > 最后消息时间
             allItems.sort((a, b) => {
-                // 1. 置顶判断（按账号隔离）
-                const aPinned = a._isGroup ? a.is_pinned : getCharPinned(a, accountId);
-                const bPinned = b._isGroup ? b.is_pinned : getCharPinned(b, accountId);
-                if (aPinned && !bPinned) return -1;
-                if (!aPinned && bPinned) return 1;
-                
-                // 2. 时间判断
-                const getLastTime = (item) => {
-                    if (item._isGroup) {
-                        const history = item.chat_history || [];
-                        if (history.length > 0) {
-                            return history[history.length - 1].time;
-                        }
-                        return item.updated_at || item.created_at || 0;
-                    } else {
-                        const history = getChatHistory(item, accountId);
-                        if (history && history.length > 0) {
-                            return history[history.length - 1].time;
-                        }
-                        return item.updated_at || 0;
-                    }
-                };
-                
-                const timeA = getLastTime(a);
-                const timeB = getLastTime(b);
-                
-                return timeB - timeA; // 降序
+                if (a._pinned && !b._pinned) return -1;
+                if (!a._pinned && b._pinned) return 1;
+                return b._lastTime - a._lastTime;
             });
             
             if (allItems.length === 0) {
@@ -13340,6 +13618,8 @@ ${loreContext}
             listDiv.style.background = '#fff';
             listDiv.style.overflowX = 'hidden';
 
+            // 🔧 性能优化：用 DocumentFragment 批量插入，减少重排
+            const frag = document.createDocumentFragment();
             allItems.forEach(f => {
                 // 群聊项渲染
                 if (f._isGroup) {
@@ -13432,7 +13712,7 @@ ${loreContext}
                     bindSwipeEvents(contentDiv, itemContainer);
                     itemContainer.appendChild(actionsDiv);
                     itemContainer.appendChild(contentDiv);
-                    listDiv.appendChild(itemContainer);
+                    frag.appendChild(itemContainer);
                     return;
                 }
                 
@@ -13563,8 +13843,9 @@ ${loreContext}
 
                 itemContainer.appendChild(actionsDiv);
                 itemContainer.appendChild(contentDiv);
-                listDiv.appendChild(itemContainer);
+                frag.appendChild(itemContainer);
             });
+            listDiv.appendChild(frag); // 批量插入所有列表项
             container.appendChild(listDiv);
         }
 
@@ -15408,14 +15689,10 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
             const myAvatar = myChar?.avatar || '';
             const avatarStyle = myAvatar ? `background-image:url(${myAvatar})` : 'background:#ccc';
             
-            // 创建消息元素
+            // 🔧 统一类名：群聊也使用 message-row + self
             const msgDiv = document.createElement('div');
             msgDiv.style.marginBottom = '12px';
-            msgDiv.className = 'group-message-row self';
-            msgDiv.style.display = 'flex';
-            msgDiv.style.flexDirection = 'row-reverse';
-            msgDiv.style.alignItems = 'flex-end';
-            msgDiv.style.gap = '8px';
+            msgDiv.className = 'message-row group-message-row self';
             
             // 渲染消息内容（处理各种特殊格式）
             let renderedContent = msg.content;
@@ -15474,23 +15751,23 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
             
             if (isSpecialMsg) {
                 msgDiv.innerHTML = `
-                    <div style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
+                    <div class="message-avatar" style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
                     <div style="display:flex; flex-direction:column; align-items:flex-end; max-width:70%;">
                         <div style="font-size:12px; color:#999; margin-bottom:2px;">${myNickname}</div>
                         <div style="display:flex; align-items:flex-end; gap:6px;">
                             <div style="font-size:10px; color:#999;">${formatChatTime(msg.time)}</div>
-                            <div class="group-msg-content">${renderedContent}</div>
+                            <div class="message-content group-msg-content">${renderedContent}</div>
                         </div>
                     </div>
                 `;
             } else {
                 msgDiv.innerHTML = `
-                    <div style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
+                    <div class="message-avatar" style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
                     <div style="display:flex; flex-direction:column; align-items:flex-end; max-width:70%;">
                         <div style="font-size:12px; color:#999; margin-bottom:2px;">${myNickname}</div>
                         <div style="display:flex; align-items:flex-end; gap:6px;">
                             <div style="font-size:10px; color:#999;">${formatChatTime(msg.time)}</div>
-                            <div class="group-msg-content" style="background:#ffe4e8; color:#000; padding:6px 10px; border-radius:18px 18px 4px 18px; font-size:15px; line-height:1.5; word-break:break-word;">${renderedContent}</div>
+                            <div class="message-content group-msg-content">${renderedContent}</div>
                         </div>
                     </div>
                 `;
@@ -15674,11 +15951,8 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                     };
                     msgIndex++;
                 } else if (msg.role === 'user') {
-                    // 我发的消息
-                    msgDiv.style.display = 'flex';
-                    msgDiv.style.flexDirection = 'row-reverse';
-                    msgDiv.style.alignItems = 'flex-end';
-                    msgDiv.style.gap = '8px';
+                    // 🔧 统一类名：群聊也使用 message-row + self，样式由CSS统一控制
+                    msgDiv.classList.add('message-row', 'self');
                     
                     const myAvatar = myChar?.avatar || '';
                     const avatarStyle = myAvatar ? `background-image:url(${myAvatar})` : 'background:#ccc';
@@ -15687,15 +15961,14 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                     const isSpecialMsg = msg.content.startsWith('[imgcard:') || msg.content.startsWith('[img:') || msg.content.startsWith('[voice:') || msg.type === 'redpacket' || msg.type === 'transfer' || msg.type === 'shopPayRequest' || msg.content.startsWith('[emei_order]') || msg.content.startsWith('[emei_share]') || msg.content.startsWith('[payment_request]') || msg.content.startsWith('[couple_avatar_card]');
                     const renderedContent = renderGroupMessageContent(msg.content, true, msg.type);
                     
-                    msgDiv.classList.add('self');
                     if (isSpecialMsg) {
                         msgDiv.innerHTML = `
-                            <div style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
+                            <div class="message-avatar" style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
                             <div style="display:flex; flex-direction:column; align-items:flex-end; max-width:70%;">
                                 <div style="font-size:12px; color:#999; margin-bottom:2px;">${myNickname}</div>
                                 <div style="display:flex; align-items:flex-end; gap:6px;">
                                     <div style="font-size:10px; color:#999;">${formatChatTime(msg.time)}</div>
-                                    <div class="group-msg-content" data-index="${currentIndex}">${renderedContent}</div>
+                                    <div class="message-content group-msg-content" data-index="${currentIndex}">${renderedContent}</div>
                                 </div>
                             </div>
                         `;
@@ -15704,18 +15977,21 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                         const quoteHtml = msg.quote ? `<div class="quoted-message" style="margin-bottom:6px;"><div class="quoted-message-name">${escapeHtml(msg.quote.name)}</div><div class="quoted-message-text">${escapeHtml(msg.quote.content)}</div></div>` : '';
                         
                         msgDiv.innerHTML = `
-                            <div style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
+                            <div class="message-avatar" style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
                             <div style="display:flex; flex-direction:column; align-items:flex-end; max-width:70%;">
                                 <div style="font-size:12px; color:#999; margin-bottom:2px;">${myNickname}</div>
                                 <div style="display:flex; align-items:flex-end; gap:6px;">
                                     <div style="font-size:10px; color:#999;">${formatChatTime(msg.time)}</div>
-                                    <div class="group-msg-content" data-index="${currentIndex}" style="background:#ffe4e8; color:#000; padding:6px 10px; border-radius:18px 18px 4px 18px; font-size:15px; line-height:1.5; word-break:break-word;">${quoteHtml}${renderedContent}</div>
+                                    <div class="message-content group-msg-content" data-index="${currentIndex}">${quoteHtml}${renderedContent}</div>
                                 </div>
                             </div>
                         `;
                     }
                     msgIndex++;
                 } else {
+                    // 🔧 统一类名：群聊也使用 message-row + other，样式由CSS统一控制
+                    msgDiv.classList.add('message-row', 'other');
+                    
                     // 群成员发的消息
                     let senderChar = msg.senderId ? memberMap[msg.senderId] : null;
                     
@@ -15732,10 +16008,6 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                     const senderAvatar = senderChar?.avatar || '';
                     const avatarStyle = senderAvatar ? `background-image:url(${senderAvatar})` : 'background:#ccc';
                     
-                    msgDiv.style.display = 'flex';
-                    msgDiv.style.alignItems = 'flex-end';
-                    msgDiv.style.gap = '8px';
-                    
                     // 判断是否是特殊消息类型（不需要气泡包裹）
                     const isSpecialMsg = msg.content.startsWith('[imgcard:') || msg.content.startsWith('[img:') || msg.content.startsWith('[voice:') || msg.type === 'redpacket' || msg.type === 'transfer' || msg.type === 'shopPayRequest' || msg.content.startsWith('[emei_order]') || msg.content.startsWith('[emei_share]') || msg.content.startsWith('[payment_request]') || msg.content.startsWith('[couple_avatar_card]');
                     const renderedContent = renderGroupMessageContent(msg.content, false, msg.type);
@@ -15745,22 +16017,22 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                     
                     if (isSpecialMsg) {
                         msgDiv.innerHTML = `
-                            <div style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
+                            <div class="message-avatar" style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
                             <div style="display:flex; flex-direction:column; max-width:70%;">
                                 <div style="font-size:12px; color:#999; margin-bottom:2px;">${senderName}</div>
                                 <div style="display:flex; align-items:flex-end; gap:6px;">
-                                    <div class="group-msg-content" data-index="${currentIndex}">${renderedContent}</div>
+                                    <div class="message-content group-msg-content" data-index="${currentIndex}">${renderedContent}</div>
                                     <div style="font-size:10px; color:#999;">${formatChatTime(msg.time)}</div>
                                 </div>
                             </div>
                         `;
                     } else {
                         msgDiv.innerHTML = `
-                            <div style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
+                            <div class="message-avatar" style="width:32px; height:32px; border-radius:50%; ${avatarStyle}; background-size:cover; background-position:center; flex-shrink:0; margin-bottom:2px;"></div>
                             <div style="display:flex; flex-direction:column; max-width:70%;">
                                 <div style="font-size:12px; color:#999; margin-bottom:2px;">${senderName}</div>
                                 <div style="display:flex; align-items:flex-end; gap:6px;">
-                                    <div class="group-msg-content" data-index="${currentIndex}" style="background:#f2f2f7; color:#000; padding:6px 10px; border-radius:18px 18px 18px 4px; font-size:15px; line-height:1.5; word-break:break-word;">${quoteHtml}${renderedContent}</div>
+                                    <div class="message-content group-msg-content" data-index="${currentIndex}">${quoteHtml}${renderedContent}</div>
                                     <div style="font-size:10px; color:#999;">${formatChatTime(msg.time)}</div>
                                 </div>
                             </div>
@@ -20244,7 +20516,7 @@ ${userDesc}
 ${avatarChangeNotice}
 ${loreContext}
 ${summaryMemoryContext}
-${_hasOfflineMemoryAuto ? `\n★ 线上线下统一世界观：你和对方的互动包含微信聊天和线下见面两个场景，它们是同一段关系。近期对话回顾中带有 [线下见面] 前缀的是线下互动，其余是微信聊天。你的记忆是完整的，请根据最近发生的事自然发起话题。\n` : ''}
+${_hasOfflineMemoryAuto ? `\n★ 线上线下统一世界观：你和对方的互动包含微信聊天和线下见面两个场景，它们是同一段关系。近期对话回顾中带有 [线下见面] 前缀的是线下互动（已缩略），其余是微信聊天。你的记忆是完整的，请根据最近发生的事自然发起话题。⚠️ 你现在是在微信上聊天，必须用微信消息风格（简短口语化），严禁使用线下见面的叙事风格。\n` : ''}
 ${momentsContextTextAuto || ''}
 
 现在距离上次对话已经过去了一段时间。请根据角色性格，主动向 ${userName} 发起新的话题，或者延续之前未尽的话题。
@@ -20260,6 +20532,7 @@ ${char.relationships.map(r => `- ${r.targetName}（${r.relation}）${r.desc ? '�
 - **打开APP**：((OPEN_APP: APP名称)) — 展示你有自己的生活！（例如 ((OPEN_APP: 王者荣耀))、((OPEN_APP: 抖音))、((OPEN_APP: 网易云音乐))、((OPEN_APP: B站))。聊到要忙、玩游戏、刷视频时都可以用）
 - **转账**：((TRANSFER: 金额, 备注)) — 请客、发红包、节日祝福转账等
 - **购物送礼**：((SHOP_GIFT: 金额, 商品名)) — 给对方买礼物！（例如 ((SHOP_GIFT: 299, 限定款包包))、((SHOP_GIFT: 99, 生日蛋糕))。节日、生日、哄人开心、表达心意时使用）
+- **亲属卡**：((FAMILY_CARD: 每月额度)) — 给对方赠送亲属卡，让对方用你的零钱消费（例如 ((FAMILY_CARD: 3000))。关系亲密、想照顾对方、宠溺对方时使用，不要轻易赠送）
 - **改网名**：((SET_NICKNAME: 新网名)) — 想换个网名时使用（例如心情变了、节日、和对方有关的昵称等）
 - **改个性签名**：((SET_SIGNATURE: 新签名)) — 更新个性签名（例如记录心情、有感而发、暗示对方等）
 - **删除好友**：((DELETE_USER)) — 你决定删除对方。只在极度失望、想断联时使用（非常严重的操作，需符合人设）
@@ -24768,11 +25041,18 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
             let touchStartEvent = null;
             let touchStartX = 0; // 记录触摸起始坐标
             let touchStartY = 0;
+            let touchHandledTranslation = false; // 🔧 防止 touchend + click 双重触发翻译闪烁
             
             const startHandler = (e) => {
                 if (isSelectionMode) return; // 多选模式下禁用长按
                 isLongPress = false;
                 touchMoved = false;
+                // 🔧 修复：只在 touchstart 时重置标记，mousedown 不重置
+                // 因为手机端事件顺序是 touchstart → touchend → mousedown → click
+                // 如果 mousedown 也重置，touchend 里设的 true 会被覆盖，导致 click 再次触发翻译切换（闪烁）
+                if (e.type === 'touchstart') {
+                    touchHandledTranslation = false;
+                }
                 touchStartEvent = e;
                 // 记录起始触摸坐标（用于判断是否真正滑动）
                 if (e.touches && e.touches[0]) {
@@ -24823,11 +25103,11 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
                     return;
                 }
                 
-                // 短按且没有滑动 → 当作点击处理
+                // 短按且没有滑动 → 当作点击处理（仅触摸设备在此处理翻译）
                 if (!touchMoved && !isSelectionMode) {
-                    // 翻译消息：切换翻译显示
                     if (element.dataset.hasTranslation === 'true') {
                         toggleTranslation(element);
+                        touchHandledTranslation = true; // 🔧 标记已处理，防止后续click再次触发
                     }
                 }
             };
@@ -24850,7 +25130,12 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
             element.addEventListener('click', (e) => {
                 if (isLongPress || isSelectionMode) return;
                 if (e.target.tagName === 'A' || e.target.tagName === 'IMG') return;
-                // 翻译消息：切换翻译显示
+                // 🔧 修复：如果 touchend 已经处理过翻译，跳过 click，防止双重触发导致闪烁
+                if (touchHandledTranslation) {
+                    touchHandledTranslation = false; // 重置标记
+                    return;
+                }
+                // 翻译消息：切换翻译显示（仅PC鼠标点击时走到这里）
                 if (element.dataset.hasTranslation === 'true') {
                     toggleTranslation(element);
                 }
@@ -28756,10 +29041,10 @@ ${summaryMemoryContext}
 ${groupMemoryContext}
 ${_hasOfflineMemory ? `\n## ★ 线上线下统一世界观
 注意：你和对方的互动包含【微信聊天】和【线下见面】两个场景，它们是同一段关系。
-- 带有 [线下见面] 前缀的消息是你们当面交流时说的话/做的事
+- 带有 [线下见面] 前缀的消息是你们当面交流时说的话/做的事（已缩略）
 - 没有前缀的消息是微信聊天
 - 你的记忆是完整的，不管是微信聊天还是线下见面的事你都清楚记得
-- 请根据最近的对话内容自然地回复，不要割裂线上线下的关系\n` : ''}
+- ⚠️ **你现在是在微信上聊天！** 必须用微信聊天的方式回复（简短口语化消息），**严禁**使用线下模式的叙事风格（第三人称描写、动作描写、心理描写等）。线下见面的内容仅作为你的记忆背景，不影响当前的微信聊天风格。\n` : ''}
 ${momentsContextText || ''}
 ${intimateRequestContext || ''}
 ${pendingTransferContext || ''}
@@ -28871,6 +29156,9 @@ ${char.foreign_lang_mode ? `
 
 购物送礼：
 ((SHOP_GIFT: 金额, 商品名))
+
+亲属卡（给对方赠送亲属卡 让对方用你的零钱消费 关系很亲密时才会赠送）：
+((FAMILY_CARD: 每月额度))
 
 撤回：
 ((RECALL))
@@ -29099,12 +29387,24 @@ ${togetherListenInfo.isPlaying ? '正在播放中...' : '已暂停'}
                     .map(m => {
                         let content = m.content || '';
                         
-                        // ★ 线下模式消息：标注来源，让AI知道这是线下见面时的对话
+                        // ★ 线下模式消息：标注来源，截断后注入（避免长篇叙事污染微信聊天风格）
                         if (m._isOffline) {
                             const role = m.role === 'char' ? 'assistant' : 'user';
+                            // 🔧 截断线下消息：提取对话部分（引号内的话），其余叙述缩略
+                            let offlineContent = content;
+                            if (offlineContent.length > 80) {
+                                // 尝试提取引号内的对话
+                                const dialogMatches = offlineContent.match(/[""\u201c](.*?)[""\u201d]/g);
+                                if (dialogMatches && dialogMatches.length > 0) {
+                                    const dialogs = dialogMatches.map(d => d.replace(/[""\u201c\u201d]/g, '')).join('；');
+                                    offlineContent = `（线下见面时说了）${dialogs}`;
+                                } else {
+                                    offlineContent = offlineContent.slice(0, 80) + '…';
+                                }
+                            }
                             return {
                                 role: role,
-                                content: `[线下见面] ${content}`
+                                content: `[线下见面] ${offlineContent}`
                             };
                         }
                         
@@ -35430,7 +35730,7 @@ function getPhoneBalance() {
 }
 
 function setPhoneBalance(amount) {
-    localStorage.setItem('phone_balance', amount.toFixed(2));
+    safeLocalStorageSet('phone_balance', amount.toFixed(2));
     // 异步备份到IndexedDB（不阻塞主流程）
     saveFinanceData('phone_balance', amount.toFixed(2)).catch(e => console.warn('[Finance] phone_balance备份失败:', e));
 }
@@ -35638,7 +35938,7 @@ function addRechargeRecord(amount) {
     if (history.length > 20) {
         history.pop();
     }
-    localStorage.setItem('phone_recharge_history', JSON.stringify(history));
+    safeLocalStorageSet('phone_recharge_history', JSON.stringify(history));
     saveFinanceData('phone_recharge_history', history).catch(e => console.warn('[Finance] phone_recharge_history备份失败:', e));
 }
 
@@ -35893,7 +36193,7 @@ async function submitLoan() {
         
         let loanHistory = JSON.parse(localStorage.getItem('loanHistory') || '[]');
         loanHistory.unshift(loanRecord);
-        localStorage.setItem('loanHistory', JSON.stringify(loanHistory));
+        safeLocalStorageSet('loanHistory', JSON.stringify(loanHistory));
         saveFinanceData('loanHistory', loanHistory).catch(e => console.warn('[Finance] loanHistory备份失败:', e));
         
         // 显示成功提示
@@ -36180,7 +36480,7 @@ async function submitRepay() {
             }
             
             loanHistory[loanIndex] = loan;
-            localStorage.setItem('loanHistory', JSON.stringify(loanHistory));
+            safeLocalStorageSet('loanHistory', JSON.stringify(loanHistory));
             saveFinanceData('loanHistory', loanHistory).catch(e => console.warn('[Finance] loanHistory备份失败:', e));
             
             // 更新当前显示的借款信息
@@ -36256,7 +36556,7 @@ async function checkOverdueLoans() {
     
     // 如果有变化，保存更新
     if (hasChanges) {
-        localStorage.setItem('loanHistory', JSON.stringify(loanHistory));
+        safeLocalStorageSet('loanHistory', JSON.stringify(loanHistory));
         saveFinanceData('loanHistory', loanHistory).catch(e => console.warn('[Finance] loanHistory备份失败:', e));
         // 刷新借款记录显示
         if (typeof loadLoanHistory === 'function') {
@@ -37045,7 +37345,7 @@ function saveScratchRecord(record) {
     if (history.length > 50) {
         history = history.slice(0, 50);
     }
-    localStorage.setItem('scratchHistory', JSON.stringify(history));
+    safeLocalStorageSet('scratchHistory', JSON.stringify(history));
     saveFinanceData('scratchHistory', history).catch(e => console.warn('[Finance] scratchHistory备份失败:', e));
 }
 
@@ -46159,25 +46459,27 @@ async function renderOfflineChatBody(char) {
     const userAvatarUrl = await getUserAvatarUrl(char.linked_user_id);
     const timeOffset = getEffectiveTimeOffset(char); // 获取虚拟时间偏移
 
+    // 应用自定义气泡CSS
+    applyOfflineBubbleCSS();
+
     offlineModeHistory.forEach((msg, index) => {
         const prevMsgTime = index > 0 ? offlineModeHistory[index - 1].time : null;
         
         // 显示时间戳
         if (shouldShowTimestamp(msg.time, prevMsgTime)) {
             const timeStamp = document.createElement('div');
-            timeStamp.className = 'message-timestamp';
-            timeStamp.style.cssText = 'text-align:center; padding:8px 0; color:#999; font-size:12px; font-family:-apple-system, BlinkMacSystemFont, sans-serif;';
+            timeStamp.className = 'offline-msg-timestamp';
             timeStamp.textContent = formatMessageTime(msg.time, prevMsgTime, timeOffset);
             body.appendChild(timeStamp);
         }
         
-        // 创建消息元素（INS风格）
+        // 创建消息行
         const row = document.createElement('div');
-        row.style.cssText = `display:flex; align-items:flex-end; gap:8px; margin-bottom:12px; padding:0 16px; ${msg.role === 'user' ? 'flex-direction:row-reverse;' : ''}`;
+        row.className = `offline-msg-row ${msg.role === 'user' ? 'offline-self' : 'offline-other'}`;
         
         // 头像
         const avatar = document.createElement('div');
-        avatar.style.cssText = 'width:36px; height:36px; border-radius:50%; flex-shrink:0; background-size:cover; background-position:center;';
+        avatar.className = 'offline-msg-avatar';
         if (msg.role === 'user') {
             if (userAvatarUrl) {
                 avatar.style.backgroundImage = `url(${userAvatarUrl})`;
@@ -46192,11 +46494,9 @@ async function renderOfflineChatBody(char) {
             }
         }
         
-        // 内容气泡（INS风格）
+        // 内容气泡
         const content = document.createElement('div');
-        const isUser = msg.role === 'user';
-        content.style.cssText = `max-width:70%; padding:10px 14px; border-radius:18px; font-size:14px; line-height:1.8; word-wrap:break-word; white-space:pre-wrap; font-family:-apple-system, BlinkMacSystemFont, sans-serif; color:#333; -webkit-user-select:none; user-select:none; ${isUser ? 'background:#ffb3d1; color:#fff; border-bottom-right-radius:4px;' : 'background:#f0f0f0; color:#333; border-bottom-left-radius:4px;'}`;
-        // 使用innerHTML保留换行，并转义HTML防止XSS
+        content.className = `offline-msg-bubble ${msg.role === 'user' ? 'offline-bubble-self' : 'offline-bubble-other'}`;
         content.textContent = msg.content;
         
         // 🔧 绑定长按事件（编辑、删除）
@@ -46439,7 +46739,7 @@ function handleOfflineChatInputChange(textarea) {
     textarea.style.height = Math.min(textarea.scrollHeight, 130) + 'px';
 }
 
-// 发送线下模式消息
+// 发送线下模式消息（仅发送，不自动触发AI回复）
 async function sendOfflineMessage() {
     const input = document.getElementById('offline-chat-input-box');
     const text = input.value.trim();
@@ -46463,19 +46763,97 @@ async function sendOfflineMessage() {
     offlineModeHistory.push(userMsg);
     
     // 保存到IndexedDB（同时兜底localStorage）
-    const key = `offline_chat_${accountId}_${offlineModeCharId}`;
     await saveOfflineChatHistory(accountId, offlineModeCharId, offlineModeHistory);
 
     // 刷新显示
     renderOfflineChatBody(char);
+}
 
-    // 调用AI生成回复
+// 🔧 请求接收AI回复（用户手动点击按钮触发）
+let _offlineGenerating = false;
+async function requestOfflineReply() {
+    if (_offlineGenerating) return; // 防止重复点击
+    if (!offlineModeCharId) {
+        showToast('请先选择聊天对象');
+        return;
+    }
+
+    const char = await db.characters.get(offlineModeCharId);
+    if (!char) return;
+
+    const accountId = getCurrentAccountId();
+    const key = `offline_chat_${accountId}_${offlineModeCharId}`;
+
+    // 显示loading状态
+    setOfflineGenerating(true);
+
     try {
         await generateOfflineReply(char, accountId, key);
     } catch (error) {
-        console.error('AI回复失败:', error);
-        alert('消息发送失败: ' + error.message);
+        console.error('[OfflineMode] AI回复失败:', error);
+        showToast('生成回复失败: ' + error.message);
+    } finally {
+        setOfflineGenerating(false);
     }
+}
+
+// 设置线下模式生成状态（loading UI）
+function setOfflineGenerating(isGenerating) {
+    _offlineGenerating = isGenerating;
+    const btn = document.getElementById('offline-btn-receive');
+    const btnText = document.getElementById('offline-btn-receive-text');
+    const replyBar = document.getElementById('offline-reply-bar');
+    
+    if (!btn || !btnText) return;
+    
+    if (isGenerating) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.style.borderColor = '#ddd';
+        btn.style.color = '#999';
+        btnText.textContent = '正在生成回复中…';
+        // 添加加载动画到聊天区域
+        showOfflineLoadingIndicator();
+    } else {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.borderColor = '#ffb3d1';
+        btn.style.color = '#e0789b';
+        btnText.textContent = '接收回复';
+        // 移除加载动画
+        hideOfflineLoadingIndicator();
+    }
+}
+
+// 显示线下模式加载指示器（在聊天区域底部）
+function showOfflineLoadingIndicator() {
+    const body = document.getElementById('offline-chat-body');
+    if (!body) return;
+    
+    // 移除已有的
+    hideOfflineLoadingIndicator();
+    
+    const indicator = document.createElement('div');
+    indicator.id = 'offline-loading-indicator';
+    indicator.style.cssText = 'display:flex; align-items:center; justify-content:center; gap:8px; padding:16px; color:#999; font-size:13px; font-family:-apple-system, BlinkMacSystemFont, sans-serif;';
+    indicator.innerHTML = `
+        <div style="display:flex; gap:4px; align-items:center;">
+            <span class="offline-dot-anim" style="width:6px; height:6px; border-radius:50%; background:#ffb3d1; animation:offlineDotPulse 1.4s infinite ease-in-out both; animation-delay:0s;"></span>
+            <span class="offline-dot-anim" style="width:6px; height:6px; border-radius:50%; background:#ffb3d1; animation:offlineDotPulse 1.4s infinite ease-in-out both; animation-delay:0.2s;"></span>
+            <span class="offline-dot-anim" style="width:6px; height:6px; border-radius:50%; background:#ffb3d1; animation:offlineDotPulse 1.4s infinite ease-in-out both; animation-delay:0.4s;"></span>
+        </div>
+        <span>对方正在回复…</span>
+    `;
+    body.appendChild(indicator);
+    
+    // 滚动到底部
+    setTimeout(() => { body.scrollTop = body.scrollHeight; }, 50);
+}
+
+// 隐藏线下模式加载指示器
+function hideOfflineLoadingIndicator() {
+    const indicator = document.getElementById('offline-loading-indicator');
+    if (indicator) indicator.remove();
 }
 
 // 生成线下模式AI回复
@@ -46545,7 +46923,12 @@ ${summaryMemoryContext}
 4. **【沉浸式互动】**：不要只说话，要结合环境和肢体语言。
 5. **【禁止网络元素】**：严禁在对话中提及或发送表情包、图片、语音等网络元素。这是线下面对面聊天，不是网络聊天。
 6. **【肢体互动】**：可以有真实的肢体互动和接触（比如：握手、拥抱、轻拍肩膀、递东西、眼神交流等）。
-7. **【回复格式要求 - 非常重要】**：
+7. **【⚠️ 严禁重复 - 最高优先级】**：
+   - **绝对禁止**重复或复述之前对话中已经出现过的动作、台词、描写、场景、语句！
+   - 每次回复必须推进剧情，引入新的动作、新的话题或新的情感变化。
+   - 如果之前已经"微笑"过，就换别的表情（如噘嘴、歪头、挑眉等）；如果之前已经说过类似的话，就换新的表达。
+   - 回顾上文，确保你的回复不会让人觉得"这段好像看过了"。
+8. **【回复格式要求 - 非常重要】**：
    - **动作描写直接写，不要用任何符号包裹**（不要用方括号[]、不要用括号()等）
    - **说的话用引号""包裹**
    - **必须换行！必须换行！必须换行！** 动作描写和对话要分开，每段之间必须换行
@@ -46726,17 +47109,18 @@ ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
 
 // 重新生成最后一条AI回复
 async function rerollOfflineMessage() {
+    if (_offlineGenerating) return; // 防止生成中重复点击
     if (!offlineModeCharId) return;
     
     // 检查是否有AI回复可以重新生成
     if (offlineModeHistory.length < 2) {
-        alert('还没有AI回复可以重新生成');
+        showToast('还没有AI回复可以重新生成');
         return;
     }
     
     const lastMsg = offlineModeHistory[offlineModeHistory.length - 1];
     if (lastMsg.role !== 'assistant') {
-        alert('最后一条消息不是AI回复');
+        showToast('最后一条消息不是AI回复');
         return;
     }
     
@@ -46755,12 +47139,17 @@ async function rerollOfflineMessage() {
     // 刷新显示
     renderOfflineChatBody(char);
     
+    // 显示loading状态
+    setOfflineGenerating(true);
+    
     // 重新生成回复
     try {
         await generateOfflineReply(char, accountId, key);
     } catch (error) {
         console.error('重新生成失败:', error);
-        alert('重新生成失败: ' + error.message);
+        showToast('重新生成失败: ' + error.message);
+    } finally {
+        setOfflineGenerating(false);
     }
 }
 
@@ -46771,7 +47160,7 @@ function getOfflineSettingsKey() {
 }
 
 function getOfflineSettings() {
-    if (!offlineModeCharId) return { minWords: 100, maxWords: 500, customPreset: '' };
+    if (!offlineModeCharId) return { minWords: 100, maxWords: 500, customPreset: '', bubbleCSS: '' };
     const key = getOfflineSettingsKey();
     const saved = localStorage.getItem(key);
     if (saved) {
@@ -46779,7 +47168,7 @@ function getOfflineSettings() {
             return JSON.parse(saved);
         } catch (e) {}
     }
-    return { minWords: 100, maxWords: 500, customPreset: '' };
+    return { minWords: 100, maxWords: 500, customPreset: '', bubbleCSS: '' };
 }
 
 function showOfflineSettings() {
@@ -46787,6 +47176,7 @@ function showOfflineSettings() {
     document.getElementById('offline-min-words').value = settings.minWords || 100;
     document.getElementById('offline-max-words').value = settings.maxWords || 500;
     document.getElementById('offline-custom-preset').value = settings.customPreset || '';
+    document.getElementById('offline-custom-bubble-css').value = settings.bubbleCSS || '';
     document.getElementById('offline-settings-page').style.display = 'flex';
 }
 
@@ -46803,12 +47193,13 @@ function autoSaveOfflineSettings() {
     let minWords = parseInt(document.getElementById('offline-min-words').value) || 100;
     let maxWords = parseInt(document.getElementById('offline-max-words').value) || 500;
     const customPreset = document.getElementById('offline-custom-preset').value.trim();
+    const bubbleCSS = (document.getElementById('offline-custom-bubble-css')?.value || '').trim();
     
     if (minWords < 10) minWords = 10;
     if (maxWords < minWords) maxWords = minWords;
     if (maxWords > 5000) maxWords = 5000;
     
-    const settings = { minWords, maxWords, customPreset };
+    const settings = { minWords, maxWords, customPreset, bubbleCSS };
     const key = getOfflineSettingsKey();
     localStorage.setItem(key, JSON.stringify(settings));
     
@@ -46820,9 +47211,25 @@ function saveOfflineSettings() {
     if (!offlineModeCharId) return;
     
     autoSaveOfflineSettings();
+    // 立即应用气泡CSS
+    applyOfflineBubbleCSS();
     
-    alert('设置已保存');
+    showToast('设置已保存');
     hideOfflineSettings();
+}
+
+// 应用线下模式自定义气泡CSS
+function applyOfflineBubbleCSS() {
+    const settings = getOfflineSettings();
+    const cssCode = settings.bubbleCSS || '';
+    
+    let styleEl = document.getElementById('offline-custom-bubble-style');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'offline-custom-bubble-style';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = cssCode;
 }
 
 function clearOfflineChatHistory() {
@@ -47328,8 +47735,8 @@ async function showChatSummaries(chatType) {
             console.log('[showChatSummaries] 过滤后结果:', summaries.length);
         }
         
-        // 按时间倒序
-        summaries.sort((a, b) => b.time - a.time);
+        // 按时间正序（第一次总结排第一，后面的依次排列）
+        summaries.sort((a, b) => a.time - b.time);
         
         const listContainer = document.getElementById('chat-summaries-list');
         const emptyState = document.getElementById('chat-summaries-empty');
@@ -47543,10 +47950,10 @@ async function confirmSummaryRange() {
 
 // 生成聊天总结
 async function generateChatSummary(chatType, chatId, accountId, chatHistory) {
-    // 获取最近的消息（最多100条）
-    const recentMessages = chatHistory.slice(-100);
+    // 🔧 修复：直接使用用户选择的全部消息，不再截断
+    const allMessages = chatHistory;
     
-    if (recentMessages.length < 5) {
+    if (allMessages.length < 5) {
         throw new Error('聊天记录太少');
     }
     
@@ -47587,30 +47994,103 @@ async function generateChatSummary(chatType, chatId, accountId, chatHistory) {
     }
     
     // 计算时间范围
-    const firstMsgTime = recentMessages[0].time || recentMessages[0].timestamp || Date.now();
-    const lastMsgTime = recentMessages[recentMessages.length - 1].time || recentMessages[recentMessages.length - 1].timestamp || Date.now();
+    const firstMsgTime = allMessages[0].time || allMessages[0].timestamp || Date.now();
+    const lastMsgTime = allMessages[allMessages.length - 1].time || allMessages[allMessages.length - 1].timestamp || Date.now();
     const timeRange = formatTimeRange(firstMsgTime, lastMsgTime);
     
-    // 构建聊天内容文本（使用微信显示名，区分线上/线下模式）
-    let chatContent = recentMessages.map(msg => {
+    // 将消息转为文本的辅助函数
+    const msgToText = (msg) => {
         let role;
         if (msg.role === 'user') {
             role = userName;
         } else if (chatType === 'group' && msg.name) {
-            // 群聊中需要区分不同发言者，但也应尽量使用显示名
             role = msg.displayName || msg.name || charName;
         } else {
-            // 私聊中统一使用角色的微信显示名
             role = charName;
         }
         const content = msg.content || msg.message || '';
-        // 🔧 标注线下模式消息
         const sourceTag = msg._source === 'offline' ? '[线下见面] ' : '';
         return `${sourceTag}${role}: ${content}`;
-    }).join('\n');
+    };
     
-    // 调用API生成总结
-    const systemPrompt = `你是一个专业的聊天记录总结助手。请根据以下聊天记录，生成一份简洁但完整的总结。
+    let finalSummary;
+    
+    // 🔧 分段策略：超过300条消息时分批总结，最后合并
+    const CHUNK_SIZE = 200;
+    if (allMessages.length > 300) {
+        console.log(`[generateChatSummary] 消息较多(${allMessages.length}条)，分段总结`);
+        showToast(`消息较多(${allMessages.length}条)，分段总结中...`);
+        
+        // 分成多个批次
+        const chunks = [];
+        for (let i = 0; i < allMessages.length; i += CHUNK_SIZE) {
+            chunks.push(allMessages.slice(i, i + CHUNK_SIZE));
+        }
+        
+        // 逐批生成子总结
+        const chunkSummaries = [];
+        for (let ci = 0; ci < chunks.length; ci++) {
+            const chunk = chunks[ci];
+            const chunkStart = chunk[0].time || chunk[0].timestamp || Date.now();
+            const chunkEnd = chunk[chunk.length - 1].time || chunk[chunk.length - 1].timestamp || Date.now();
+            const chunkTimeRange = formatTimeRange(chunkStart, chunkEnd);
+            const chunkContent = chunk.map(msgToText).join('\n');
+            
+            showToast(`正在总结第 ${ci + 1}/${chunks.length} 段...`);
+            
+            const chunkPrompt = `你是一个专业的聊天记录总结助手。请根据以下聊天记录片段，生成一份简洁但完整的总结。
+
+总结要求：
+1. 必须使用第三人称视角，以旁观者角度客观描述
+2. 使用"${userName}"和"${charName}"的名字，严禁使用"AI"、"助手"、"机器人"、"用户"等词汇
+3. 提炼出主要话题和关键信息
+4. 如果有重要的情感变化或事件，要特别指出
+5. 总结长度控制在150-300字之间
+
+这是第 ${ci + 1}/${chunks.length} 段，时间范围：${chunkTimeRange}
+聊天记录如下：
+${chunkContent}`;
+            
+            const chunkMessages = [
+                { role: 'system', content: chunkPrompt },
+                { role: 'user', content: '请为这段聊天记录生成总结。' }
+            ];
+            
+            const chunkResult = await callAI(chunkMessages);
+            chunkSummaries.push(`【第${ci + 1}段 ${chunkTimeRange}】\n${chunkResult}`);
+        }
+        
+        // 合并所有子总结为最终总结
+        showToast('正在合并总结...');
+        const mergePrompt = `你是一个专业的聊天记录总结助手。下面是分段生成的聊天总结，请将它们合并为一份完整、连贯的总结。
+
+合并要求：
+1. **必须使用第三人称视角**：以旁观者角度客观描述，严禁使用"我"、"我们"、"你"等第一/第二人称
+2. **必须包含时间信息**：在总结开头注明时间段，例如"在X月X日至X月X日期间"
+3. **使用对话中的称呼**：总结中直接使用"${userName}"和"${charName}"的名字，严禁使用"AI"、"助手"、"机器人"、"用户"等词汇
+4. 用客观的叙事口吻描述双方的交流
+5. 按时间顺序组织，保留所有重要事件和情感变化
+6. 去除重复内容，使总结连贯流畅
+7. 总结长度控制在300-600字之间
+8. 如果能提取3-5个关键词，请在最后用【关键词】标注
+
+总时间范围：${timeRange}
+共 ${allMessages.length} 条消息
+
+以下是各段总结：
+${chunkSummaries.join('\n\n')}`;
+        
+        const mergeMessages = [
+            { role: 'system', content: mergePrompt },
+            { role: 'user', content: '请合并以上分段总结为一份完整的总结。' }
+        ];
+        
+        finalSummary = await callAI(mergeMessages);
+    } else {
+        // 消息量不大，直接一次性总结
+        const chatContent = allMessages.map(msgToText).join('\n');
+        
+        const systemPrompt = `你是一个专业的聊天记录总结助手。请根据以下聊天记录，生成一份简洁但完整的总结。
 
 总结要求：
 1. **必须使用第三人称视角**：以旁观者角度客观描述，严禁使用"我"、"我们"、"你"等第一/第二人称
@@ -47628,20 +48108,21 @@ async function generateChatSummary(chatType, chatId, accountId, chatHistory) {
 聊天记录如下：
 ${chatContent}`;
 
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: '请为这段聊天记录生成总结。' }
-    ];
-    
-    const summary = await callAI(messages);
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: '请为这段聊天记录生成总结。' }
+        ];
+        
+        finalSummary = await callAI(messages);
+    }
     
     // 提取关键词
     let keywords = [];
-    const keywordMatch = summary.match(/【关键词】[:：]?\s*(.+?)$/);
-    let content = summary;
+    const keywordMatch = finalSummary.match(/【关键词】[:：]?\s*(.+?)$/);
+    let content = finalSummary;
     if (keywordMatch) {
         keywords = keywordMatch[1].split(/[,，、\s]+/).filter(k => k.trim());
-        content = summary.replace(/【关键词】[:：]?\s*.+?$/, '').trim();
+        content = finalSummary.replace(/【关键词】[:：]?\s*.+?$/, '').trim();
     }
     
     // 保存到数据库
@@ -47651,7 +48132,7 @@ ${chatContent}`;
         chatId: String(chatId),
         time: Date.now(),
         content: content,
-        messageCount: recentMessages.length,
+        messageCount: allMessages.length,
         timeRange: timeRange,
         keywords: keywords,
         startTime: firstMsgTime,

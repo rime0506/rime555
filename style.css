@@ -1,3 +1,4 @@
+
 :root {
             --app-height: 100vh; /* JS 会用 window.innerHeight 覆盖此值 */
             --ins-pink: #ffb6c1;
@@ -556,6 +557,60 @@ body {
             from { transform: translateY(100%); }
             to { transform: translateY(0); }
         }
+        /* 线下模式加载动画 */
+        @keyframes offlineDotPulse {
+            0%, 80%, 100% { transform: scale(0.4); opacity: 0.3; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        /* ==================== 线下模式气泡样式 ==================== */
+        .offline-msg-timestamp {
+            text-align: center;
+            padding: 8px 0;
+            color: #999;
+            font-size: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .offline-msg-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 0 16px;
+        }
+        .offline-msg-row.offline-self {
+            flex-direction: row-reverse;
+        }
+        .offline-msg-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background-size: cover;
+            background-position: center;
+        }
+        .offline-msg-bubble {
+            max-width: 70%;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1.8;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #333;
+            -webkit-user-select: none;
+            user-select: none;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            position: relative;
+        }
+        .offline-msg-bubble.offline-bubble-other {
+            border-bottom-left-radius: 2px;
+        }
+        .offline-msg-bubble.offline-bubble-self {
+            border-bottom-right-radius: 2px;
+        }
         .image-picker-title {
             font-size: 15px;
             font-weight: 600;
@@ -788,8 +843,7 @@ body {
             50% { opacity: 0.5; }
         }
         .setting-header {
-            background: rgba(242, 242, 247, 0.9); /* 与背景同色，略透明 */
-            backdrop-filter: blur(10px);
+            background: rgba(242, 242, 247, 0.98); /* 性能优化：去掉blur，用更高不透明度替代 */
             padding: 50px 24px 12px; /* 加高顶栏 */
             display: flex;
             align-items: flex-end;
@@ -1272,8 +1326,7 @@ body {
         }
         .wechat-header {
             height: 88px; /* 包含状态栏高度 */
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.98); /* 性能优化：去掉blur，用更高不透明度替代 */
             padding-top: 44px; /* 避让状态栏 */
             padding-bottom: 10px;
             padding-left: 16px;
@@ -2387,8 +2440,7 @@ body {
         }
         .chat-header {
             height: 88px;
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.98); /* 性能优化：去掉blur，用更高不透明度替代 */
             padding-top: 44px;
             padding-left: 10px;
             padding-right: 16px;
@@ -2733,6 +2785,14 @@ body {
             display: flex;
             gap: 8px;
             align-items: flex-start; /* 顶部对齐 - 头像跟随气泡顶部 */
+        }
+        /* 🔧 群聊消息行统一使用 message-row，但覆盖对齐方式（群聊有发送者名称，需要底部对齐） */
+        .message-row.group-message-row {
+            align-items: flex-end;
+        }
+        /* 群聊气泡取消 message-content 的 max-width 限制（由外层容器控制宽度） */
+        .message-row.group-message-row .message-content {
+            max-width: none;
         }
         .message-row.self {
             flex-direction: row-reverse;
