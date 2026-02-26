@@ -47,25 +47,14 @@ if (document.readyState === 'loading') {
     }
 }
 
-// ========== 移动端视口高度适配 ==========
-// 问题：部分手机浏览器 100vh 包含了地址栏/工具栏高度，导致内容溢出可见区域
-// 方案：用 window.innerHeight（真实可见高度）设置 CSS 变量 --app-height
-// 注意：PWA 独立模式下没有地址栏，100vh 就是全屏，不需要 JS 覆盖
-//       否则 innerHeight 可能比 100vh 小一点点，导致所有页面底部出现白块
+// ========== PWA 模式检测 ==========
 const _isPWAStandalone = window.matchMedia('(display-mode: standalone)').matches
     || window.navigator.standalone === true;
 
-function setAppHeight() {
-    if (_isPWAStandalone) return; // PWA 模式直接用 CSS 的 100vh，不覆盖
-    const h = window.innerHeight;
-    document.documentElement.style.setProperty('--app-height', h + 'px');
+// 在 PWA 模式下给 body 添加 class，让 CSS 用 fixed + inset 完全撑满
+if (_isPWAStandalone) {
+    document.body.classList.add('standalone-mode');
 }
-setAppHeight();
-window.addEventListener('resize', setAppHeight);
-// orientationchange 在部分旧安卓上比 resize 更可靠
-window.addEventListener('orientationchange', () => {
-    setTimeout(setAppHeight, 150);
-});
 
 // 移动端虚拟键盘适配
 // 原理：键盘弹起时 visualViewport.height 缩小，但 window.innerHeight（100vh）不变
@@ -90,7 +79,7 @@ function applyKeyboardLayout() {
     const isKeyboardUp = kbHeight > 50;
     
     // 键盘弹起时：把聊天窗口高度缩到可视视口高度，整个底栏都在键盘上方
-    // 键盘收起时：恢复原始高度
+    // 键盘收起时：恢复原始状态（CSS bottom:0 自动撑满）
     const targets = document.querySelectorAll('.chat-window');
     targets.forEach(el => {
         if (el.style.display !== 'none' && el.style.display !== '') {
@@ -98,12 +87,14 @@ function applyKeyboardLayout() {
                 // 对齐可视视口（PWA全屏模式下可能有偏移）
                 el.style.top = vpTop + 'px';
                 el.style.height = vp.height + 'px';
+                el.style.bottom = 'auto'; // 键盘弹起时用 height 控制，禁用 bottom
                 // 标记键盘状态，CSS 会去掉安全区域 padding
                 el.classList.add('keyboard-up');
             } else {
-                // 恢复原始状态
-                el.style.top = '0';
-                el.style.height = 'var(--app-height, 100vh)';
+                // 🔧 恢复原始状态：清除所有内联样式，让 CSS 的 top:0+bottom:0 自动撑满
+                el.style.top = '';
+                el.style.height = '';
+                el.style.bottom = '';
                 el.classList.remove('keyboard-up');
             }
         }
@@ -8601,7 +8592,7 @@ async function saveCalendarTime() {
     const char = await db.characters.get(currentChatCharId);
     if (!char) return;
     
-    const useVirtual = calendar.elements.timeModeToggle ? calendar.elements.timeModeToggle.checked : true;
+    const useVirtual = calendar.elements.timeModeToggle ? calendar.elements.timeModeToggle.checked : false;
     
     if (useVirtual) {
         const targetTime = calendar.selectedDate.getTime();
@@ -8620,7 +8611,8 @@ async function saveCalendarTime() {
 }
 
 function isVirtualTimeEnabled(char) {
-    return char ? char.timeOffsetEnabled !== false : true;
+    // 🔧 默认关闭虚拟时间（使用现实时间），用户手动开启后才生效
+    return char ? char.timeOffsetEnabled === true : false;
 }
 
 function getEffectiveTimeOffset(char) {
@@ -17517,9 +17509,9 @@ ${history.length > 0 ? `\n你们之前的聊天记录：\n${recentMessages}` : '
                     alert('格式错误！请输入如：60分钟、2小时、1天');
                     return;
                 }
-                // 🔥 更新虚拟时间偏移
+                // 🔧 只有虚拟时间开启时才更新时间偏移
                 const char = await db.characters.get(charId);
-                if (char) {
+                if (char && isVirtualTimeEnabled(char)) {
                     if (!char.timeOffset) char.timeOffset = 0;
                     char.timeOffset += minutesNum * 60 * 1000;
                     await safeCharacterPut(char);
@@ -17546,9 +17538,9 @@ ${history.length > 0 ? `\n你们之前的聊天记录：\n${recentMessages}` : '
                 return;
             }
             
-            // 🔥 更新虚拟时间偏移
+            // 🔧 只有虚拟时间开启时才更新时间偏移
             const char = await db.characters.get(charId);
-            if (char) {
+            if (char && isVirtualTimeEnabled(char)) {
                 if (!char.timeOffset) char.timeOffset = 0;
                 char.timeOffset += minutesNum * 60 * 1000;
                 await safeCharacterPut(char);
@@ -17632,11 +17624,13 @@ ${history.length > 0 ? `\n你们之前的聊天记录：\n${recentMessages}` : '
             try {
                 console.log('[FastForwardBlocked] 开始快进，时长:', unitText);
                 
-                // 更新虚拟时间偏移
+                // 🔧 只有虚拟时间开启时才更新时间偏移
                 const char = await db.characters.get(charId);
-                if (!char.timeOffset) char.timeOffset = 0;
-                char.timeOffset += ms;
-                await safeCharacterPut(char);
+                if (isVirtualTimeEnabled(char)) {
+                    if (!char.timeOffset) char.timeOffset = 0;
+                    char.timeOffset += ms;
+                    await safeCharacterPut(char);
+                }
                 
                 console.log('[FastForwardBlocked] 时间已更新，开始检查被拉黑角色...');
                 
@@ -18031,9 +18025,12 @@ ${recentMessages || '（无记录）'}
             
             try {
                 const char = await db.characters.get(charId);
-                if (!char.timeOffset) char.timeOffset = 0;
-                char.timeOffset += ms;
-                await safeCharacterPut(char);
+                // 🔧 只有虚拟时间开启时才更新时间偏移
+                if (isVirtualTimeEnabled(char)) {
+                    if (!char.timeOffset) char.timeOffset = 0;
+                    char.timeOffset += ms;
+                    await safeCharacterPut(char);
+                }
                 
                 const accountId = getCurrentAccountId();
                 const myChar = await db.characters.get(parseInt(accountId));
@@ -18205,9 +18202,12 @@ ${recentMessages || '（无记录）'}
             
             try {
                 const char = await db.characters.get(charId);
-                if (!char.timeOffset) char.timeOffset = 0;
-                char.timeOffset += ms;
-                await safeCharacterPut(char);
+                // 🔧 只有虚拟时间开启时才更新时间偏移
+                if (isVirtualTimeEnabled(char)) {
+                    if (!char.timeOffset) char.timeOffset = 0;
+                    char.timeOffset += ms;
+                    await safeCharacterPut(char);
+                }
                 
                 const accountId = getCurrentAccountId();
                 const myChar = await db.characters.get(parseInt(accountId));
@@ -27585,7 +27585,7 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
             
             closeModal('fast-forward-modal');
             
-            // 1. 计算毫秒数并更新虚拟时间
+            // 1. 计算毫秒数
             let ms = 0;
             let unitText = '';
             if (unit === 'minute') {
@@ -27599,17 +27599,21 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
                 unitText = amount + '天';
             }
             
-            // 1. 更新虚拟时间偏移（如果有当前聊天）
+            // 获取角色，判断是否开启虚拟时间
             let char = null;
             if (currentChatCharId) {
                 char = await db.characters.get(currentChatCharId);
-                if (char) {
-                    // 更新虚拟时间偏移
-                    if (!char.timeOffset) char.timeOffset = 0;
-                    char.timeOffset += ms;
-                    await safeCharacterPut(char);
-                    console.log(`[FastForward] Updated time offset by +${ms}ms (${unitText})`);
-                }
+            }
+            const useVirtualTime = char ? isVirtualTimeEnabled(char) : false;
+            
+            // 🔧 只有虚拟时间开启时才更新时间偏移
+            if (useVirtualTime && char) {
+                if (!char.timeOffset) char.timeOffset = 0;
+                char.timeOffset += ms;
+                await safeCharacterPut(char);
+                console.log(`[FastForward] 虚拟时间模式：Updated time offset by +${ms}ms (${unitText})`);
+            } else {
+                console.log(`[FastForward] 现实时间模式：不更新时间偏移，仅触发AI继续对话`);
             }
             
             // 2. 检查被拉黑的角色是否会联系
@@ -27619,32 +27623,32 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
             if (currentChatCharId && char) {
                 const accountId = getCurrentAccountId();
                 
-                // 🔧 添加时间戳消息到聊天记录，标记时间快进
                 // 重新从DB获取最新的char（防止checkBlockedCharactersContact期间有新消息写入）
                 char = await db.characters.get(currentChatCharId);
                 if (!char) return;
-                const history = getChatHistory(char, accountId);
-                // 🔧 修复：使用最后一条消息的时间+1ms，确保系统消息紧跟在已有消息之后
-                // 不能用 Date.now()，否则和后续AI回复的 Date.now() 时间太接近，排序后位置不稳定
-                const lastMsgTime = history.length > 0 ? (history[history.length - 1].time || 0) : 0;
-                const newTime = lastMsgTime + 1; // 紧跟最后一条消息，一定排在AI回复之前
-                const timeSkipMsg = `时间过去了 ${unitText}`;
-                history.push({
-                    role: 'system',
-                    content: timeSkipMsg,
-                    time: newTime,
-                    isTimeSkip: true
-                });
-                await setChatHistory(char, accountId, history);
                 
-                // 🔧 立即显示时间戳到 UI
-                appendMessageToUI('system', timeSkipMsg);
-                
-                // 重新获取更新后的 char
-                char = await db.characters.get(currentChatCharId);
-                
-                // 触发 AI 回复，告诉角色时间过去了多久
-                await triggerAiReply(`时间快进了 ${unitText}。请根据这段时间的流逝，自然地继续对话。`);
+                if (useVirtualTime) {
+                    // ✅ 虚拟时间模式：添加时间快进标记 + 告诉AI时间过去了多久
+                    const history = getChatHistory(char, accountId);
+                    const lastMsgTime = history.length > 0 ? (history[history.length - 1].time || 0) : 0;
+                    const newTime = lastMsgTime + 1;
+                    const timeSkipMsg = `时间过去了 ${unitText}`;
+                    history.push({
+                        role: 'system',
+                        content: timeSkipMsg,
+                        time: newTime,
+                        isTimeSkip: true
+                    });
+                    await setChatHistory(char, accountId, history);
+                    appendMessageToUI('system', timeSkipMsg);
+                    
+                    char = await db.characters.get(currentChatCharId);
+                    await triggerAiReply(`时间快进了 ${unitText}。请根据这段时间的流逝，自然地继续对话。`);
+                } else {
+                    // 🔧 现实时间模式：不改变时间认知，只让AI自然继续对话
+                    // 不添加"时间过去了X"的系统消息，不告诉AI时间变化，避免出戏
+                    await triggerAiReply();
+                }
             } else {
                 console.warn('[FastForward] 没有当前聊天，跳过AI回复');
             }
@@ -35355,12 +35359,13 @@ function showStickerPage() {
         return;
     }
     console.log('[showStickerPage] Setting display to flex and ensuring position fixed');
-    // 确保页面是 fixed 定位并显示
+    // 确保页面是 fixed 定位并显示（不设固定高度，用 top:0+bottom:0 自动撑满）
     page.style.position = 'fixed';
     page.style.top = '0';
     page.style.left = '0';
+    page.style.right = '0';
+    page.style.bottom = '0';
     page.style.width = '100vw';
-    page.style.height = 'var(--app-height, 100vh)';
     page.style.zIndex = '200';
     page.style.display = 'flex';
     console.log('[showStickerPage] Calling renderStickerCategories');
@@ -47245,17 +47250,6 @@ let offlineModeHistory = [];
 
 // 显示线下模式
 async function showOfflineMode() {
-    // 🔒 线下模式暂时加锁
-    const _offlineUnlockKey = 'kkk151515';
-    const _offlineUnlocked = localStorage.getItem('_offline_unlocked');
-    if (!_offlineUnlocked) {
-        const pwd = prompt('因线下模式近期频繁出现异常，为保证使用体验，现暂时关闭线下模式，待问题修复完善后，将重新开放。\n\n如有内测密码请输入：');
-        if (!pwd || pwd.trim() !== _offlineUnlockKey) {
-            return;
-        }
-        localStorage.setItem('_offline_unlocked', '1');
-    }
-
     if (!currentChatCharId) {
         alert('请先选择一个聊天对象');
         return;

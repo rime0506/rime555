@@ -1,6 +1,5 @@
 
 :root {
-            --app-height: 100vh; /* JS 会用 window.innerHeight 覆盖此值 */
             --ins-pink: #ffb6c1;
             --ins-pink-light: #ffe4e8;
             --ins-gray: #999999;
@@ -18,8 +17,25 @@
             text-size-adjust: 100% !important;
         }
         /* 基础设置 */
-        html, body {
+        html {
             width: 100%;
+            height: 100%;
+            height: 100vh;
+            height: 100dvh; /* iOS PWA 必须使用 dvh 撑满屏幕，否则会在底部留出地址栏大小的白块 */
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            -webkit-text-size-adjust: 100%;
+            -moz-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+            background-color: #000; /* 防止底部安全区出现白边 */
+        }
+        body {
+            width: 100%;
+            height: 100%;
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            height: 100dvh;
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -49,14 +65,76 @@ body {
 }
 .phone {
     width: 100vw;
-    height: var(--app-height, 100vh);
+    height: 100vh;
+    height: 100dvh; /* 现代浏览器：动态视口高度，自动排除地址栏/底部工具栏 */
     overflow: hidden;
     position: relative;
     padding: 0 8px;
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-        }
+}
+
+/* PWA 全屏模式：用 fixed + inset 完全撑满，避免 100vh 为地址栏预留空间 */
+@media (display-mode: standalone) {
+    .phone {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: auto !important; /* 让 top/bottom 决定高度，不依赖 vh */
+        margin: 0 !important;
+        padding: 0 8px !important; /* 保持原有的左右 padding */
+    }
+}
+
+/* iOS PWA 模式（navigator.standalone） */
+@supports (-webkit-touch-callout: none) {
+    body.standalone-mode .phone {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 8px !important;
+    }
+}
+
+/* PWA 模式下，所有 position:fixed 的全屏页面也要用 inset:0 而不是 height:100% */
+@media (display-mode: standalone) {
+    .wechat-page,
+    .chat-window,
+    .setting-page,
+    .custom-page,
+    .phone-page,
+    .entry-editor-page,
+    .sub-page-container,
+    .transfer-modal,
+    .message-page,
+    #sticker-page,
+    .chat-detail-page {
+        height: auto !important;
+    }
+}
+
+body.standalone-mode .wechat-page,
+body.standalone-mode .chat-window,
+body.standalone-mode .setting-page,
+body.standalone-mode .custom-page,
+body.standalone-mode .phone-page,
+body.standalone-mode .entry-editor-page,
+body.standalone-mode .sub-page-container,
+body.standalone-mode .transfer-modal,
+body.standalone-mode .message-page,
+body.standalone-mode #sticker-page,
+body.standalone-mode .chat-detail-page {
+    height: auto !important;
+}
         
         /* #home-page 样式已移除，以便恢复默认文档流和滚动行为 */
         /* 顶部磨砂小组件 */
@@ -441,7 +519,7 @@ body {
         /* 个性化设置 - 纯折叠展开式 核心样式 */
         .custom-page {
             width: 100vw;
-            height: var(--app-height, 100vh);
+            height: 100%;
             background: #ffffff;
             padding: 100px 24px 20px;
             display: none;
@@ -825,8 +903,9 @@ body {
             position: fixed;
             top: 0;
             left: 0;
+            right: 0;
+            bottom: 0;
             width: 100%;
-            height: var(--app-height, 100vh);
             background: #f2f2f7; /* iOS 设置背景色 */
             z-index: 100;
             display: none;
@@ -1315,8 +1394,9 @@ body {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
-    height: var(--app-height, 100vh);
     background: #ffffff; /* 纯白背景 */
             z-index: 150;
             display: none;
@@ -1338,8 +1418,7 @@ body {
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--ins-border);
-            position: sticky;
-            top: 0;
+            flex-shrink: 0;
             z-index: 10;
         }
         .wechat-title {
@@ -1597,8 +1676,9 @@ body {
             position: fixed;
             top: 0;
             left: 0;
+            right: 0;
+            bottom: 0;
             width: 100vw;
-            height: var(--app-height, 100vh);
             padding: 0;
             overflow: hidden;
             display: none;
@@ -2243,8 +2323,9 @@ body {
             position: fixed;
             top: 0;
             left: 0;
+            right: 0;
+            bottom: 0;
             width: 100%;
-            height: var(--app-height, 100vh);
             background: #f2f2f7;
             z-index: 210; /* 比聊天窗口高 */
             display: none;
@@ -2428,8 +2509,9 @@ body {
             position: fixed;
             top: 0;
             left: 0;
+            right: 0;
+            bottom: 0; /* 🔧 用 top+bottom 撑满屏幕，彻底避免 100vh 在手机上不准导致底栏不贴底 */
             width: 100%;
-            height: var(--app-height, 100vh);
             background: #ffffff; /* 聊天背景改白 */
             z-index: 200;
             display: none;
@@ -2450,8 +2532,7 @@ body {
             display: flex;
             align-items: center;
             border-bottom: 1px solid var(--ins-border);
-            position: sticky;
-            top: 0;
+            flex-shrink: 0;
             z-index: 10;
         }
         .chat-back {
@@ -2495,6 +2576,7 @@ body {
         }
         .chat-body {
             flex: 1;
+            min-height: 0; /* flex 子项收缩关键：保证 overflow-y 正常工作 */
             overflow-y: auto;
             padding: 16px;
             display: flex;
@@ -2512,9 +2594,15 @@ body {
     transition: padding-bottom 0.15s ease;
 }
 
-/* 键盘弹起时去掉安全区域 padding（Home指示条已被键盘遮住，不需要留空） */
-.keyboard-up .chat-footer {
-    padding-bottom: 0 !important;
+/* =========================================================================
+   🔧 修复 iOS PWA 模式下键盘上方的操作栏（Accessory Bar）遮挡输入框的 Bug 
+   问题原因：当键盘弹起时，iOS会瞬间把 env(safe-area-inset-bottom) 设为0，导致底栏瞬间塌陷并被键盘遮挡。
+   解决方案：不再依赖 env(safe-area-inset-bottom)，在独立模式下直接固定为 34px（与 iPhone 底部安全区高度一致）。
+   这样键盘弹起时底部依然有 34px 的高度，完美避开键盘操作栏，且无任何闪烁或计算延迟，与短信页面保持一致行为。
+   ========================================================================= */
+body.standalone-mode .chat-footer,
+body.standalone-mode .wechat-tabbar {
+    padding-bottom: 34px !important;
 }
         
         /* 线下模式输入框区域 - 与线上私聊页面保持一致 */
@@ -3008,6 +3096,7 @@ body {
         
         .wechat-content {
             flex: 1;
+            min-height: 0; /* flex 子项收缩关键：让 overflow 正常裁剪 */
             display: flex;
             flex-direction: column;
             overflow-y: auto;
@@ -3644,8 +3733,9 @@ body {
             position: fixed;
             top: 0;
             left: 0;
+            right: 0;
+            bottom: 0;
             width: 100%;
-            height: 100%;
             background: #fff;
             z-index: 160;
             display: none;
@@ -5082,8 +5172,9 @@ body {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
-    height: 100%;
     background: #ffffff;
     z-index: 160; /* 比普通 service-main-page (150) 高 */
     display: none; /* 初始隐藏 */
@@ -5357,8 +5448,9 @@ body {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
-    height: 100%;
     background: #f2f2f7; /* iOS 背景灰 */
     z-index: 300;
     display: none;
@@ -6020,8 +6112,9 @@ body {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
-    height: 100%;
     background: #000;
     display: flex;
     justify-content: center;
@@ -7606,8 +7699,9 @@ body {
     position: fixed;
     top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
     width: 100%;
-    height: var(--app-height, 100vh);
     background: #ffffff;
     z-index: 150;
     display: flex;
@@ -8077,7 +8171,6 @@ body {
     background: linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.3));
     width: 100%;
     height: 100%;
-    min-height: var(--app-height, 100vh);
     overflow-x: hidden;
     overflow-y: auto;
     color: white;
@@ -8091,7 +8184,7 @@ body {
     position: relative;
     width: 100%;
     box-sizing: border-box;
-    min-height: var(--app-height, 100vh);
+    min-height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -9094,7 +9187,7 @@ body {
     flex-direction: column;
     align-items: center;
     background: #ffffff;
-    min-height: calc(var(--app-height, 100vh) - 60px);
+    min-height: calc(100% - 60px);
 }
 
 /* 屏幕切换 */
@@ -10934,7 +11027,7 @@ body {
     max-width: 600px;
     margin: 0 auto;
     position: relative;
-    min-height: var(--app-height, 100vh);
+    min-height: 100%;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -11310,7 +11403,7 @@ body {
 .icity-app-page .publish-page {
     background-color: #fff;
     width: 100%;
-    height: var(--app-height, 100vh);
+    height: 100%;
     padding-bottom: 60px;
 }
 
@@ -11360,7 +11453,7 @@ body {
 
 .icity-app-page .content-input {
     width: 100%;
-    min-height: calc(var(--app-height, 100vh) - 180px);
+    min-height: calc(100dvh - 180px);
     border: none;
     outline: none;
     padding: 15px 10px;
@@ -11422,7 +11515,7 @@ body {
 
 .icity-app-page .my-page {
     background-color: #fafafa;
-    min-height: var(--app-height, 100vh);
+    min-height: 100%;
     padding-bottom: 80px;
 }
 

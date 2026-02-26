@@ -470,6 +470,39 @@
                     <div class="custom-item-text" style="color:#e57373; text-align:center;">↺ 清空CSS</div>
                 </div>
             </div>
+            
+            <div class="custom-item" onclick="toggleExpand('expand-css-classes')" style="margin-top:8px; background:#f0f8ff;">
+                <div class="custom-item-text" style="color:#0277bd;">📋 WeChat 页面常用类名速查</div>
+                <div class="custom-item-arrow" id="arrow-css-classes" style="color:#0277bd;">→</div>
+            </div>
+            
+            <div class="custom-expand" id="expand-css-classes" style="display:none; flex-direction:column; gap:6px; margin-top:8px; padding:12px; background:#f8f9fa; border-radius:8px; border:1px solid #e0e0e0; font-size:12px; color:#555; line-height:1.6;">
+                <div style="font-weight:bold; color:#333; margin-bottom:2px; border-bottom:1px solid #ddd; padding-bottom:4px;">页面容器与顶栏</div>
+                <div><b>微信页面容器：</b> <code>.wechat-page</code></div>
+                <div><b>聊天窗口：</b> <code>.chat-window</code></div>
+                <div><b>顶栏：</b> <code>.chat-header</code></div>
+                <div><b>返回按钮：</b> <code>.chat-back</code></div>
+                <div><b>标题(角色名字)：</b> <code>.chat-title</code></div>
+                <div><b>线下模式/聊天详情按钮：</b> <code>.chat-more</code></div>
+                
+                <div style="font-weight:bold; color:#333; margin-top:6px; margin-bottom:2px; border-bottom:1px solid #ddd; padding-bottom:4px;">聊天区域</div>
+                <div><b>聊天内容区：</b> <code>.chat-body</code></div>
+                <div><b>对方消息行：</b> <code>.message-row.other</code></div>
+                <div><b>自己消息行：</b> <code>.message-row.self</code></div>
+                <div><b>消息气泡：</b> <code>.message-content</code></div>
+                <div><b>头像：</b> <code>.message-avatar</code></div>
+                
+                <div style="font-weight:bold; color:#333; margin-top:6px; margin-bottom:2px; border-bottom:1px solid #ddd; padding-bottom:4px;">底栏与输入框</div>
+                <div><b>底栏容器：</b> <code>.chat-footer</code></div>
+                <div><b>输入栏包装：</b> <code>.chat-input-bar</code></div>
+                <div><b>输入框：</b> <code>.chat-input</code></div>
+                <div><b>接受回复(AI魔法棒)/表情包/菜单图标：</b> <code>.chat-icon-btn</code></div>
+                <div><b>发送消息按钮：</b> <code>.chat-send-btn</code></div>
+                <div><b>菜单面板容器：</b> <code>.chat-panel-container</code></div>
+                <div><b>表情面板：</b> <code>.emoji-panel</code></div>
+                <div><b>操作(附加功能)面板：</b> <code>.action-panel</code></div>
+            </div>
+
             <div class="custom-edit-tip" style="margin-top:8px; font-size:11px; color:#bbb; line-height:1.5;">
                 提示：CSS代码会在保存设置后持久生效。可用浏览器F12查看元素类名。<br>
                 点击"预览聊天效果"可以实时查看CSS在聊天页面的效果。
@@ -528,7 +561,7 @@
                     
                     <!-- 聊天页面底栏 - 完全按照实际结构 -->
                     <div class="chat-footer" style="background:#ffffff; border-top:1px solid rgba(0,0,0,0.05); display:flex; flex-direction:column; flex-shrink:0;">
-                        <div class="chat-input-bar" style="min-height:60px; padding:10px 12px; padding-bottom:10px; display:flex; align-items:center; gap:10px;">
+                        <div class="chat-input-bar" style="min-height:60px; padding:10px 12px; display:flex; align-items:center; gap:10px;">
                             <!-- 左侧：AI 魔法棒 -->
                             <div class="chat-icon-btn" style="width:32px; height:32px; color:#999; cursor:pointer; display:flex; align-items:center; justify-content:center; border-radius:50%; flex-shrink:0;">
                                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:20px; height:20px;"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 5H1"/></svg>
@@ -4952,7 +4985,7 @@
                         <div class="time-mode-sub">关闭=现实时间</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="cal-time-mode-toggle" checked>
+                        <input type="checkbox" id="cal-time-mode-toggle">
                         <span class="slider"></span>
                     </label>
                 </div>
