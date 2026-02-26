@@ -13865,7 +13865,12 @@ ${loreContext}
                 item._pinned = item._isGroup ? item.is_pinned : getCharPinned(item, accountId);
                 if (item._isGroup) {
                     const h = item.chat_history || [];
-                    item._lastTime = h.length > 0 ? h[h.length - 1].time : (item.updated_at || item.created_at || 0);
+                    // ✅ 修复：从后往前找到最后一条有时间戳的消息，同时与 updated_at 取最大值
+                    let lastMsgTime = 0;
+                    for (let _li = h.length - 1; _li >= 0; _li--) {
+                        if (h[_li].time) { lastMsgTime = h[_li].time; break; }
+                    }
+                    item._lastTime = Math.max(lastMsgTime, item.updated_at || 0, item.created_at || 0);
                 } else {
                     const h = getChatHistory(item, accountId);
                     item._lastTime = (h && h.length > 0) ? h[h.length - 1].time : (item.updated_at || 0);
@@ -15008,11 +15013,23 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
             
             // 添加新成员
             const newMemberNames = [];
+            const reInvitedNames = []; // 重新邀请的已退群成员
             for (const memberId of memberIds) {
                 if (!group.memberIds.includes(memberId)) {
                     group.memberIds.push(memberId);
                     const char = await db.characters.get(memberId);
-                    if (char) newMemberNames.push(getCharDisplayName(char, getCurrentAccountId()));
+                    const displayName = char ? getCharDisplayName(char, getCurrentAccountId()) : '成员';
+                    
+                    // 检查是否是重新邀请已退群的成员
+                    const leftMembers = group.leftMembers || [];
+                    const leftRecord = leftMembers.find(lm => lm.id === memberId);
+                    if (leftRecord) {
+                        // 从 leftMembers 中移除（但退群记忆保留在 chat_history 中）
+                        group.leftMembers = leftMembers.filter(lm => lm.id !== memberId);
+                        reInvitedNames.push(displayName);
+                    } else {
+                        newMemberNames.push(displayName);
+                    }
                 }
             }
             
@@ -15022,6 +15039,15 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                     role: 'system',
                     content: `${newMemberNames.join('、')} 加入了群聊`,
                     time: Date.now()
+                });
+            }
+            
+            if (reInvitedNames.length > 0) {
+                // 重新邀请已退群成员的系统消息
+                group.chat_history.push({
+                    role: 'system',
+                    content: `${reInvitedNames.join('、')} 被重新邀请回群聊`,
+                    time: Date.now() + 1
                 });
             }
             
@@ -15902,13 +15928,25 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
             const accountId = getCurrentAccountId();
             const allChars = await db.characters.toArray();
             const existingMemberIds = group.memberIds || [];
+            const leftMemberIds = (group.leftMembers || []).map(lm => lm.id);
             
-            // 过滤出还不在群里的好友
+            // 过滤出还不在群里的好友（包括已退群的，方便重新邀请）
             const friends = allChars.filter(c => {
                 if (c.type === 'user') return false;
                 if (existingMemberIds.includes(c.id)) return false;
                 const status = getFriendStatus(c, accountId);
+                // 已退群的角色也显示（即使不是好友状态也允许重新邀请）
+                if (leftMemberIds.includes(c.id)) return true;
                 return status === 'friend';
+            });
+            
+            // 将已退群的角色排在前面
+            friends.sort((a, b) => {
+                const aLeft = leftMemberIds.includes(a.id);
+                const bLeft = leftMemberIds.includes(b.id);
+                if (aLeft && !bLeft) return -1;
+                if (!aLeft && bLeft) return 1;
+                return 0;
             });
             
             if (friends.length === 0) {
@@ -15924,13 +15962,15 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                 
                 const _invAv = getCharAvatar(f, accountId);
                 const avatarStyle = _invAv ? `background-image:url(${_invAv})` : 'background-color:#eee';
+                const isLeftMember = leftMemberIds.includes(f.id);
+                const leftLabel = isLeftMember ? '<span style="font-size:12px; color:#ff9500; margin-left:8px; padding:1px 6px; background:#fff5eb; border-radius:4px;">已退群</span>' : '';
                 
                 item.innerHTML = `
                     <div class="group-select-checkbox" style="width:22px; height:22px; border:2px solid #ddd; border-radius:50%; margin-right:12px; display:flex; align-items:center; justify-content:center; transition:all 0.2s;">
                         <svg class="check-icon" style="width:14px; height:14px; stroke:#fff; fill:none; stroke-width:3; display:none;" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
                     </div>
                     <div style="width:40px; height:40px; border-radius:4px; ${avatarStyle}; background-size:cover; background-position:center; margin-right:12px;"></div>
-                    <div style="font-size:16px; color:#333;">${getCharDisplayName(f, accountId)}</div>
+                    <div style="font-size:16px; color:#333;">${getCharDisplayName(f, accountId)}${leftLabel}</div>
                 `;
                 
                 item.onclick = function() {
@@ -16069,11 +16109,18 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
             // 获取我的群昵称
             const myNickname = group.myNickname || (myChar ? (myChar.nick || myChar.name) : '我');
             
-            // 预加载所有成员信息
+            // 预加载所有成员信息（包括已退群的成员，确保历史消息能正确显示）
             const memberMap = {};
             for (const memberId of group.memberIds) {
                 const char = await db.characters.get(memberId);
                 if (char) memberMap[memberId] = char;
+            }
+            // 加载已退群成员信息（用于显示退群前的历史消息）
+            for (const lm of (group.leftMembers || [])) {
+                if (!memberMap[lm.id]) {
+                    const char = await db.characters.get(lm.id);
+                    if (char) memberMap[lm.id] = char;
+                }
             }
             
             // 辅助函数：渲染群聊消息内容（支持特殊格式）
@@ -23343,11 +23390,13 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
 禁言 {"type": "mute_member", "name": "管理员名", "target": "目标名", "mute": true}
 解禁 {"type": "mute_member", "name": "管理员名", "target": "目标名", "mute": false}
 私聊 {"type": "dm", "name": "角色名", "content": "内容"} 消息发到角色和${myNickname}的私聊 用|||连发多条
+退群 {"type": "leave_group", "name": "角色名", "reason": "退群原因(可选)"} 角色主动退出群聊 退群后不再参与群聊对话 但保留之前的记忆
 
 角色有合适的场合可以发红包 过节 生日 活跃气氛
 角色有话想私下跟${myNickname}说可以用dm
 发红包后其他角色就可以用claim_redpacket抢
 角色聊到某个朋友时可以顺手把朋友拉进群 用invite_npc
+角色如果对群聊氛围不满 被冒犯 或者有合理的角色动机 可以用leave_group主动退群 退群是比较严重的行为 不要轻易使用
 
 示例
 [
@@ -23747,6 +23796,47 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
                             continue;
                         }
                         
+                        // 处理退群指令
+                        if (reply.type === 'leave_group') {
+                            if (!senderId) continue;
+                            
+                            const leaver = memberMap[senderId];
+                            if (!leaver) continue;
+                            
+                            const _leaveAid = getCurrentAccountId();
+                            const leaverName = getCharDisplayName(leaver, _leaveAid) || reply.name;
+                            const leaveReason = reply.reason ? `（${reply.reason}）` : '';
+                            
+                            // 从成员列表移除
+                            updatedGroup.memberIds = updatedGroup.memberIds.filter(id => id !== senderId);
+                            // 从管理员列表移除
+                            updatedGroup.adminIds = (updatedGroup.adminIds || []).filter(id => id !== senderId);
+                            // 从禁言列表移除
+                            updatedGroup.mutedMembers = (updatedGroup.mutedMembers || []).filter(id => id !== senderId);
+                            
+                            // 记录退群信息到 leftMembers（支持记忆截断和重新邀请）
+                            if (!updatedGroup.leftMembers) updatedGroup.leftMembers = [];
+                            // 检查是否已有该成员的退群记录，如果有则更新
+                            const existingLeftIdx = updatedGroup.leftMembers.findIndex(lm => lm.id === senderId);
+                            const leftRecord = { id: senderId, leftAt: Date.now(), name: leaverName, reason: reply.reason || '' };
+                            if (existingLeftIdx >= 0) {
+                                updatedGroup.leftMembers[existingLeftIdx] = leftRecord;
+                            } else {
+                                updatedGroup.leftMembers.push(leftRecord);
+                            }
+                            
+                            // 添加系统消息
+                            updatedGroup.chat_history.push({
+                                role: 'system',
+                                content: `${leaverName} 退出了群聊${leaveReason}`,
+                                time: Date.now() + msgIndex * 50
+                            });
+                            msgIndex++;
+                            
+                            console.log(`[群聊退群] ✅ ${leaverName} 主动退出了群聊${leaveReason}`);
+                            continue;
+                        }
+                        
                         // 处理发送红包指令
                         if (reply.type === 'send_redpacket') {
                             console.log('[群聊红包] 检测到发红包指令:', JSON.stringify(reply));
@@ -24109,6 +24199,12 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
             }, 300);
             currentChatCharId = null;
             window.currentGroupChatId = null; // 清除群聊ID
+            
+            // ✅ 返回聊天列表时刷新排序（确保最新消息的聊天排在最前面）
+            if (document.querySelector('.wechat-tab-item.active')?.innerText.includes('微信')) {
+                const wechatContent = document.getElementById('wechat-content');
+                if (wechatContent) renderWechatList(wechatContent);
+            }
             
             // 恢复输入框显示（查岗模式可能隐藏了它）
             const chatFooter = document.getElementById('chat-footer');
@@ -29407,7 +29503,12 @@ ${hasPassword ? `
                     const accountId_gm = getCurrentAccountId();
                     if (accountId_gm) {
                         const allGroups = await db.group_chats.where('ownerAccountId').equals(accountId_gm).toArray();
-                        const charGroups = allGroups.filter(g => g.memberIds && g.memberIds.includes(targetCharId));
+                        // 包含当前在群里的 + 已退群但有记录的
+                        const charGroups = allGroups.filter(g => {
+                            if (g.memberIds && g.memberIds.includes(targetCharId)) return true;
+                            if (g.leftMembers && g.leftMembers.some(lm => lm.id === targetCharId)) return true;
+                            return false;
+                        });
                         
                         if (charGroups.length > 0) {
                             let groupSnippets = [];
@@ -29415,12 +29516,31 @@ ${hasPassword ? `
                                 const gHistory = g.chat_history || [];
                                 if (gHistory.length === 0) continue;
                                 
-                                // 取最近10条消息做摘要
-                                const recentMsgs = gHistory.slice(-10);
+                                // 检查角色是否已退群
+                                const leftRecord = (g.leftMembers || []).find(lm => lm.id === targetCharId);
+                                const isLeftGroup = !!leftRecord;
+                                
+                                let recentMsgs;
+                                if (isLeftGroup) {
+                                    // 已退群角色：只能看到退群前的消息
+                                    const msgsBeforeLeft = gHistory.filter(m => !m.time || m.time <= leftRecord.leftAt);
+                                    recentMsgs = msgsBeforeLeft.slice(-10);
+                                } else {
+                                    // 当前群成员：取最近10条消息做摘要
+                                    recentMsgs = gHistory.slice(-10);
+                                }
+                                
                                 const gMemberMap = {};
                                 for (const mid of (g.memberIds || [])) {
                                     const mc = await db.characters.get(mid);
                                     if (mc) gMemberMap[mid] = mc;
+                                }
+                                // 也加载已退群成员信息用于显示名字
+                                for (const lm of (g.leftMembers || [])) {
+                                    if (!gMemberMap[lm.id]) {
+                                        const mc = await db.characters.get(lm.id);
+                                        if (mc) gMemberMap[lm.id] = mc;
+                                    }
                                 }
                                 
                                 const snippet = recentMsgs.map(m => {
@@ -29433,7 +29553,11 @@ ${hasPassword ? `
                                 }).filter(Boolean).join('\n');
                                 
                                 if (snippet) {
-                                    groupSnippets.push(`【群聊"${g.name}"最近动态】\n${snippet}`);
+                                    if (isLeftGroup) {
+                                        groupSnippets.push(`【群聊"${g.name}"（你已退群）】\n你之前退出了这个群聊${leftRecord.reason ? '，原因：' + leftRecord.reason : ''}。以下是你退群前的最近动态：\n${snippet}`);
+                                    } else {
+                                        groupSnippets.push(`【群聊"${g.name}"最近动态】\n${snippet}`);
+                                    }
                                 }
                             }
                             
@@ -29644,6 +29768,31 @@ images: 数量
 打电话：
 ((CALL))
 
+给对方点外卖：
+((EMEI_ORDER: 店铺名, 商品1 x数量 ¥单价/商品2 x数量 ¥单价, 总金额))
+注意：必须用两个逗号分隔三部分 每个商品单价要符合实际
+
+代付请求（让对方帮忙付款）：
+((EMEI_PAY: 店铺名, 商品1 x数量 ¥单价/商品2 x数量 ¥单价, 总金额))
+
+分享外卖（分享自己点的外卖）：
+((EMEI_SHARE: 店铺名, 商品1 ¥单价/商品2 ¥单价, 总金额))
+
+改网名：
+((SET_NICKNAME: 新网名))
+
+改个性签名：
+((SET_SIGNATURE: 新签名))
+
+删除好友（你删对方 极度失望想断联时才用 非常严重）：
+((DELETE_USER))
+
+拉黑好友（你拉黑对方 极度愤怒被深深伤害时才用 最严重的操作）：
+((BLOCK_USER))
+${char.relationships && char.relationships.length > 0 ? `
+让关联NPC加对方好友（让你身边的人主动加对方）：
+((NPC_ADD_FRIEND: NPC名字))` : ''}
+
 引用消息（引用之前的某条消息来回复，让对话更有针对性）：
 ((QUOTE: 被引用人的名字, 被引用的内容摘要))回复内容
 例如：((QUOTE: ${userName}, 明天一起吃饭吧))好呀 去哪吃？
@@ -29670,6 +29819,7 @@ ${char.identity?.password ? `
 
 根据剧情自然使用
 不要强制使用
+注意：删除好友和拉黑是非常严重的操作 只有人设和剧情确实发展到那个程度才使用
 
 ---
 
@@ -47612,18 +47762,44 @@ async function generateOfflineReply(char, accountId, storageKey) {
     try {
         if (accountId) {
             const allGroups = await db.group_chats.where('ownerAccountId').equals(accountId).toArray();
-            const charGroups = allGroups.filter(g => g.memberIds && g.memberIds.includes(char.id));
+            // 包含当前在群里的 + 已退群但有记录的
+            const charGroups = allGroups.filter(g => {
+                if (g.memberIds && g.memberIds.includes(char.id)) return true;
+                if (g.leftMembers && g.leftMembers.some(lm => lm.id === char.id)) return true;
+                return false;
+            });
             if (charGroups.length > 0) {
                 let groupSnippets = [];
                 for (const g of charGroups) {
                     const gHistory = g.chat_history || [];
                     if (gHistory.length === 0) continue;
-                    const recentMsgs = gHistory.slice(-8);
+                    
+                    // 检查角色是否已退群
+                    const leftRecord = (g.leftMembers || []).find(lm => lm.id === char.id);
+                    const isLeftGroup = !!leftRecord;
+                    
+                    let recentMsgs;
+                    if (isLeftGroup) {
+                        // 已退群角色：只能看到退群前的消息
+                        const msgsBeforeLeft = gHistory.filter(m => !m.time || m.time <= leftRecord.leftAt);
+                        recentMsgs = msgsBeforeLeft.slice(-8);
+                    } else {
+                        recentMsgs = gHistory.slice(-8);
+                    }
+                    
                     const gMemberMap = {};
                     for (const mid of (g.memberIds || [])) {
                         const mc = await db.characters.get(mid);
                         if (mc) gMemberMap[mid] = mc;
                     }
+                    // 也加载已退群成员信息
+                    for (const lm of (g.leftMembers || [])) {
+                        if (!gMemberMap[lm.id]) {
+                            const mc = await db.characters.get(lm.id);
+                            if (mc) gMemberMap[lm.id] = mc;
+                        }
+                    }
+                    
                     const snippet = recentMsgs.map(m => {
                         if (m.role === 'system') return null;
                         if (m.role === 'user') return `${myName}: ${(m.content || '').substring(0, 60)}`;
@@ -47631,7 +47807,14 @@ async function generateOfflineReply(char, accountId, storageKey) {
                         if (!sc) return null;
                         return `${sc.remark || sc.wx_nickname || sc.name}: ${(m.content || '').substring(0, 60)}`;
                     }).filter(Boolean).join('\n');
-                    if (snippet) groupSnippets.push(`【群聊"${g.name}"】\n${snippet}`);
+                    
+                    if (snippet) {
+                        if (isLeftGroup) {
+                            groupSnippets.push(`【群聊"${g.name}"（你已退群）】\n你之前退出了这个群聊${leftRecord.reason ? '，原因：' + leftRecord.reason : ''}。以下是你退群前的最近动态：\n${snippet}`);
+                        } else {
+                            groupSnippets.push(`【群聊"${g.name}"】\n${snippet}`);
+                        }
+                    }
                 }
                 if (groupSnippets.length > 0) {
                     groupMemoryContext = `\n## 共同群聊近况\n${groupSnippets.join('\n\n')}\n`;
