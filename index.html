@@ -5229,6 +5229,14 @@
                 <div style="font-size:15px; font-weight:500; color:#333; margin-bottom:4px;">自定义预设</div>
                 <div style="font-size:12px; color:#999; margin-bottom:12px;">追加到系统提示词末尾，可用于自定义场景、地点、规则等。留空则使用默认设定。</div>
                 <textarea id="offline-custom-preset" placeholder="例如：&#10;场景是在一家安静的咖啡厅里，窗外下着小雨...&#10;&#10;或者：&#10;请使用更加文学化的描写风格，多使用比喻和象征手法。" style="width:100%; min-height:150px; border:1px solid #e0e0e0; background:#fafafa; padding:12px; border-radius:8px; font-size:14px; color:#333; line-height:1.6; resize:vertical; outline:none; box-sizing:border-box; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;" onfocus="this.style.borderColor='#ffb3d1'" onblur="this.style.borderColor='#e0e0e0'"></textarea>
+                
+                <div style="display:flex; gap:10px; margin-top:12px;">
+                    <div onclick="saveOfflineCustomPreset()" style="flex:1; padding:10px; background:#e8f5e9; color:#43a047; text-align:center; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer;">💾 保存方案</div>
+                    <div onclick="loadOfflineCustomPreset()" style="flex:1; padding:10px; background:#e3f2fd; color:#1e88e5; text-align:center; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer;">📂 加载方案</div>
+                </div>
+                <div id="offline-preset-list" style="display:none; margin-top:12px; border-top:1px dashed #eee; padding-top:12px;">
+                    <!-- 动态生成预设列表 -->
+                </div>
             </div>
 
             <!-- 自定义气泡CSS -->

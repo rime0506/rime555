@@ -2595,14 +2595,17 @@ body.standalone-mode .chat-detail-page {
 }
 
 /* =========================================================================
-   🔧 修复 iOS PWA 模式下键盘上方的操作栏（Accessory Bar）遮挡输入框的 Bug 
-   问题原因：当键盘弹起时，iOS会瞬间把 env(safe-area-inset-bottom) 设为0，导致底栏瞬间塌陷并被键盘遮挡。
-   解决方案：不再依赖 env(safe-area-inset-bottom)，在独立模式下直接固定为 34px（与 iPhone 底部安全区高度一致）。
-   这样键盘弹起时底部依然有 34px 的高度，完美避开键盘操作栏，且无任何闪烁或计算延迟，与短信页面保持一致行为。
+   🔧 修复 iOS PWA 模式键盘遮挡问题
+   当键盘弹起时，去掉所有安全区域 padding，依靠 JS 计算的视口高度对齐底部。
+   不再固定 34px，以防止在系统视口计算正确时出现白色空隙！
    ========================================================================= */
-body.standalone-mode .chat-footer,
-body.standalone-mode .wechat-tabbar {
-    padding-bottom: 34px !important;
+.keyboard-up .chat-footer,
+.keyboard-up .chat-input-bar,
+.keyboard-up .wechat-tabbar,
+body.standalone-mode .keyboard-up .chat-footer,
+body.standalone-mode .keyboard-up .chat-input-bar,
+body.standalone-mode .keyboard-up .wechat-tabbar {
+    padding-bottom: 0 !important;
 }
         
         /* 线下模式输入框区域 - 与线上私聊页面保持一致 */
@@ -2972,11 +2975,6 @@ body.standalone-mode .wechat-tabbar {
             background: var(--ins-pink-light); /* 自己浅粉 */
             color: #000;
             border-bottom-right-radius: 4px; /* 小尾巴效果 */
-        }
-        /* 移除原来的三角形尾巴 */
-        .message-row.other .message-content::before,
-        .message-row.self .message-content::after {
-            display: none;
         }
         
         /* ========== 仿微信气泡样式 ========== */
