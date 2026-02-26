@@ -48,7 +48,22 @@
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js" defer></script>
 </head>
 <body id="desktop-body">
-    <div class="phone" id="home-page">
+    <!-- 启动加载屏 -->
+    <div id="app-loading-screen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#ffffff;z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.5s ease;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:18px;">
+            <div style="width:72px;height:72px;background:#FFF7FA;border-radius:1.2rem;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(255,182,193,0.15);">
+                <svg viewBox="0 0 24 24" style="width:36px;height:36px;stroke:#ffb6c1;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                </svg>
+            </div>
+            <div style="font-size:16px;color:#999;font-weight:400;letter-spacing:1px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">加载中...</div>
+            <div style="width:120px;height:2px;background:#f5f5f5;border-radius:1px;overflow:hidden;">
+                <div id="app-loading-bar" style="width:0%;height:100%;background:linear-gradient(90deg,#ffb6c1,#ffc8d6);border-radius:1px;transition:width 0.4s ease;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="phone" id="home-page" style="opacity:0;transition:opacity 0.4s ease;">
         <!-- 顶部磨砂小组件 -->
         <div class="top-widget" onclick="showNotificationCenter()">
             <div class="icon" id="widget-icon"></div>
@@ -714,7 +729,10 @@
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </div>
             <div class="setting-title">设置</div>
-            <div style="width:50px;"></div>
+            <div class="save-btn" onclick="saveSettingPage()" style="font-size:13px; color:#999; display:flex; align-items:center; gap:3px; padding:5px 10px; min-width:50px; justify-content:flex-end;">
+                <svg viewBox="0 0 24 24" style="width:15px; height:15px; stroke:#999; fill:none; stroke-width:2;"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                保存
+            </div>
         </div>
         
         <div class="setting-content">
@@ -812,6 +830,48 @@
                     <button class="test-btn" onclick="testConnection()">
                         <span id="test-btn-text">测试连接</span>
                     </button>
+                </div>
+            </div>
+
+            <!-- 副API 设置 折叠卡片 -->
+            <div class="api-setting-card">
+                <div class="api-header" onclick="toggleSecondaryApiSetting()">
+                    <div class="api-title">🔌 副API 设置</div>
+                    <div class="api-arrow" id="secondary-api-setting-arrow">▼</div>
+                </div>
+                <div class="api-body" id="secondary-api-setting-body" style="display:none;">
+                    <div style="font-size:12px; color:#999; margin-bottom:12px; line-height:1.5;">
+                        副API用于总结记忆、生成朋友圈评论等辅助功能。<br>如果不设置，这些功能将使用主API。
+                    </div>
+
+                    <div class="api-label">API 地址</div>
+                    <div class="api-input-group">
+                        <input type="text" class="api-input" id="secondary-ai-url-input" placeholder="留空则使用主API地址" onchange="autoSaveSecondaryApi()">
+                    </div>
+
+                    <div class="api-label">API 密钥</div>
+                    <div class="api-input-group">
+                        <input type="password" class="api-input" id="secondary-ai-key-input" placeholder="留空则使用主API密钥" onchange="autoSaveSecondaryApi()">
+                        <div class="eye-icon" onclick="toggleSecondaryKeyVis()">显示</div>
+                    </div>
+
+                    <div class="api-label">模型选择</div>
+                    <div class="model-row">
+                        <div class="model-select-wrapper">
+                            <select class="model-select" id="secondary-ai-model-select" onchange="autoSaveSecondaryApi()">
+                                <option value="" disabled selected>留空则使用主API模型</option>
+                            </select>
+                        </div>
+                        <button class="fetch-btn" onclick="fetchSecondaryModels()">
+                            <div class="loading-spinner" id="secondary-fetch-spinner"></div>
+                            <span id="secondary-fetch-text">拉取模型</span>
+                        </button>
+                    </div>
+
+                    <button class="test-btn" onclick="testSecondaryConnection()" style="margin-top:12px;">
+                        <span id="secondary-test-btn-text">测试副API连接</span>
+                    </button>
+                    <button onclick="clearSecondaryApi()" style="margin-top:8px; width:100%; padding:10px; background:#f5f5f5; color:#999; border:none; border-radius:8px; font-size:13px; cursor:pointer;">清空副API（恢复使用主API）</button>
                 </div>
             </div>
 
@@ -2598,10 +2658,17 @@
                     </div>
                     <select id="detail-moments-frequency" style="border:1px solid #e0e0e0; background:#fff; padding:6px 12px; border-radius:8px; font-size:14px; color:#333; outline:none; -webkit-appearance:none; appearance:none; cursor:pointer;">
                         <option value="off">关闭</option>
-                        <option value="low">低</option>
-                        <option value="medium">中</option>
-                        <option value="high">高</option>
+                        <option value="low">低（4~8小时）</option>
+                        <option value="medium">中（1~3小时）</option>
+                        <option value="high">高（15~60分钟）</option>
                     </select>
+                </div>
+                <div class="detail-item" onclick="manualTriggerMoment()" style="cursor:pointer;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div>立即发一条朋友圈</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">手动触发角色生成朋友圈并生成评论</div>
+                    </div>
+                    <div style="color:#ffb6c1; font-size:20px;">›</div>
                 </div>
             </div>
 

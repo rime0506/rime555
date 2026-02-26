@@ -2940,6 +2940,7 @@ body {
         
         /* ===== 卡片消息：无论什么气泡主题，均去掉气泡包裹 ===== */
         .message-row .message-content:has(.transfer-card),
+        .message-row .message-content:has(.redpacket-card),
         .message-row .message-content:has(.family-card-msg),
         .message-row .message-content:has(.spr-card),
         .message-row .message-content:has(.intimate-req-card),
@@ -2955,6 +2956,8 @@ body {
         /* 去掉小尾巴三角（对任何主题） */
         .message-row .message-content:has(.transfer-card)::before,
         .message-row .message-content:has(.transfer-card)::after,
+        .message-row .message-content:has(.redpacket-card)::before,
+        .message-row .message-content:has(.redpacket-card)::after,
         .message-row .message-content:has(.family-card-msg)::before,
         .message-row .message-content:has(.family-card-msg)::after,
         .message-row .message-content:has(.spr-card)::before,
