@@ -4,14 +4,14 @@
 console.log('[SW] Service Worker loaded (纯前端模式)');
 
 // 缓存名称
-const CACHE_NAME = 'ins-desktop-v1';
+const CACHE_NAME = 'ins-desktop-v2';
 
 // 需要缓存的资源
 const CACHE_URLS = [
     './',
     './index.html',
     './style.css',
-    './script.JS',
+    './script.js',
     './manifest.json'
 ];
 
