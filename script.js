@@ -2549,6 +2549,7 @@ async function saveFinanceData(key, value) {
                     data: {}
                 };
                 
+                let skippedLsKeys = [];
                 if (includeLocal) {
                     // ===== 1. 逐表导出主数据库，每个表之间让出主线程避免长时间阻塞 =====
                     const tables = [
@@ -2628,7 +2629,6 @@ async function saveFinanceData(key, value) {
                     updateLoadingText('正在收集数据', '正在读取: 本地设置');
                     exportData.localStorage = {};
                     const MAX_LS_VALUE_SIZE = 5 * 1024 * 1024; // 单个 localStorage 值超过 5MB 则跳过
-                    let skippedLsKeys = [];
                     for (let i = 0; i < localStorage.length; i++) {
                         const key = localStorage.key(i);
                         const value = localStorage.getItem(key);
