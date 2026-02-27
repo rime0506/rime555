@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual">
     <title>芽芽机</title>
     
     <!-- PWA 配置 (Manifest 生成逻辑在 script.js 中) -->
@@ -170,6 +170,10 @@
                             <div class="name">查手机</div>
                         </div>
                         <div class="app-icon" id="icon-placeholder">
+                            <div class="icon"></div>
+                            <div class="name">占位</div>
+                        </div>
+                        <div class="app-icon" id="icon-placeholder2">
                             <div class="icon"></div>
                             <div class="name">占位</div>
                         </div>
@@ -480,6 +484,22 @@
                     <div class="custom-item-text" style="text-align:center; color:#5b7ddb;">📋 查看类名参考</div>
                 </div>
             </div>
+            <!-- CSS预设保存/加载 -->
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #eee;">
+                <div style="font-size:13px; font-weight:500; margin-bottom:8px; color:#333;">💾 CSS预设</div>
+                <div style="font-size:11px; color:#999; margin-bottom:10px;">保存当前CSS为预设，方便一键切换或复用</div>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <div class="custom-item" onclick="saveGlobalCSSPreset()" style="flex:1; background:#e8f0ff; justify-content:center;">
+                        <div class="custom-item-text" style="text-align:center; color:#007aff;">💾 保存为预设</div>
+                    </div>
+                    <div class="custom-item" onclick="loadGlobalCSSPreset()" style="flex:1; background:#e8fae8; justify-content:center;">
+                        <div class="custom-item-text" style="text-align:center; color:#34c759;">📂 加载预设</div>
+                    </div>
+                </div>
+                <div id="global-css-preset-list" style="display:none;">
+                    <!-- 动态生成预设列表 -->
+                </div>
+            </div>
             <div class="custom-edit-tip" style="margin-top:8px; font-size:11px; color:#bbb; line-height:1.5;">
                 提示：CSS代码会在保存设置后持久生效。可用浏览器F12查看元素类名。<br>
                 点击"预览聊天效果"可以实时查看CSS在聊天页面的效果。
@@ -780,6 +800,14 @@
                     <div class="setting-item-text">诊断面板</div>
                     <div style="color: #999; font-size: 12px;">查看 user_id 和订阅状态</div>
                     <div class="setting-arrow">›</div>
+                </div>
+                <div class="setting-item" onclick="document.getElementById('mc-console-switch').click()">
+                    <div class="setting-item-text">📱 移动端控制台</div>
+                    <div style="color: #999; font-size: 12px;">实时查看日志输出，方便手机调试</div>
+                    <label class="ios-switch" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="mc-console-switch" onchange="window._mcEnableConsole(this.checked)" />
+                        <span class="slider"></span>
+                    </label>
                 </div>
             </div>
 
@@ -1417,7 +1445,7 @@
 
     <!-- 查手机 - 第一步：选择用户账号（白色INS风） -->
     <div class="wechat-page" id="findphone-page" style="display:none; background:#f7f7f7; z-index:300;">
-        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0;">
+        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0; padding-top:12px; height:auto; min-height:44px;">
             <div class="back-btn" onclick="hideFindPhonePage()" style="margin:0; background:none; width:40px; justify-content:flex-start; padding-left:0; color:#333;">
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </div>
@@ -1436,7 +1464,7 @@
     
     <!-- 查手机 - 第二步：选择角色好友 -->
     <div class="wechat-page" id="findphone-roles-page" style="display:none; background:#f7f7f7; z-index:305;">
-        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0;">
+        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0; padding-top:12px; height:auto; min-height:44px;">
             <div class="back-btn" onclick="hideFindPhoneRolesPage()" style="margin:0; background:none; width:40px; justify-content:flex-start; padding-left:0; color:#333;">
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </div>
@@ -1473,7 +1501,7 @@
             <div id="findphone-lock-date" class="findphone-lock-date"></div>
         </div>
         
-        <!-- 桌面应用区域 - 只有一个WeChat -->
+        <!-- 桌面应用区域 -->
         <div class="findphone-app-area">
             <div class="findphone-app-icon" onclick="openFindPhoneWechat()">
                 <div class="findphone-icon-img">
@@ -1482,6 +1510,14 @@
                     </svg>
                 </div>
                 <div class="findphone-app-label">WeChat</div>
+            </div>
+            <div class="findphone-app-icon" onclick="openFindPhoneBaidu()">
+                <div class="findphone-icon-img" style="background:linear-gradient(135deg, #2932e1 0%, #4e6ef2 100%);">
+                    <svg viewBox="0 0 1024 1024" style="width:30px; height:30px; fill:#fff;">
+                        <path d="M412.8 619.2c-48-76.8-124.8-134.4-124.8-134.4s-108.8 54.4-115.2 172.8c-6.4 118.4 92.8 172.8 92.8 172.8s32 16 80 3.2c48-12.8 80-48 121.6-60.8 41.6-12.8 86.4 0 86.4 0s128 38.4 182.4 9.6c54.4-28.8 67.2-115.2 67.2-115.2s16-96-28.8-150.4c-44.8-54.4-108.8-19.2-137.6 16-28.8 35.2-57.6 73.6-89.6 86.4-35.2 12.8-99.2 12.8-134.4 0zM390.4 428.8c57.6 0 96-60.8 86.4-137.6-9.6-76.8-57.6-140.8-115.2-140.8s-96 57.6-86.4 140.8c6.4 76.8 57.6 137.6 115.2 137.6zM236.8 512c57.6-9.6 80-83.2 54.4-163.2-25.6-80-86.4-131.2-144-121.6-57.6 9.6-80 83.2-54.4 163.2 25.6 80 89.6 131.2 144 121.6zM633.6 428.8c57.6 0 105.6-60.8 99.2-137.6-9.6-76.8-64-137.6-121.6-137.6s-105.6 60.8-99.2 137.6c9.6 76.8 64 137.6 121.6 137.6zM790.4 512c57.6 9.6 118.4-41.6 140.8-121.6 25.6-80 0-153.6-57.6-163.2-57.6-9.6-118.4 41.6-140.8 121.6-25.6 80 0 153.6 57.6 163.2z"/>
+                    </svg>
+                </div>
+                <div class="findphone-app-label">百度</div>
             </div>
         </div>
         
@@ -1510,6 +1546,47 @@
         </div>
     </div>
     
+    <!-- 查手机 - 百度搜索历史页面（白色INS风简约） -->
+    <div class="wechat-page" id="fp-baidu-page" style="display:none; z-index:320; background:#fafafa;">
+        <!-- 顶部导航栏 -->
+        <div class="fp-baidu-header">
+            <div class="back-btn" onclick="closeFpBaidu()" style="margin:0; background:none; width:40px; justify-content:flex-start; padding-left:0; color:#333;">
+                <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </div>
+            <div class="fp-baidu-header-title">搜索历史</div>
+            <div style="width:40px;"></div>
+        </div>
+        
+        <!-- 搜索栏（装饰性） -->
+        <div class="fp-baidu-search-bar">
+            <svg viewBox="0 0 24 24" style="width:16px; height:16px; stroke:#bbb; fill:none; stroke-width:2; flex-shrink:0;">
+                <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <span style="color:#ccc; font-size:14px;">搜索</span>
+        </div>
+        
+        <!-- 搜索历史列表 -->
+        <div class="fp-baidu-content" id="fp-baidu-content">
+            <div class="fp-baidu-empty">
+                <svg viewBox="0 0 24 24" style="width:48px; height:48px; stroke:#ddd; fill:none; stroke-width:1.5;">
+                    <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <div style="margin-top:12px; color:#ccc; font-size:14px;">暂无搜索记录</div>
+                <div style="margin-top:4px; color:#ddd; font-size:12px;">点击下方按钮生成</div>
+            </div>
+        </div>
+        
+        <!-- 底部生成按钮 -->
+        <div class="fp-baidu-footer">
+            <button class="fp-baidu-generate-btn" id="fp-baidu-generate-btn" onclick="generateBaiduSearchHistory()">
+                <svg viewBox="0 0 24 24" style="width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2; flex-shrink:0;">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                <span id="fp-baidu-generate-text">生成搜索记录</span>
+            </button>
+        </div>
+    </div>
+
     <!-- 查手机 - 独立WeChat页面（全新独立实例，布局与正常微信一样） -->
     <div class="wechat-page" id="fp-wechat-page" style="display:none; z-index:320;">
         <div class="wechat-header">
@@ -2775,13 +2852,13 @@
                         <div style="font-size:12px; color:#999; line-height:1.4;">AI自动总结聊天内容到收藏</div>
                     </div>
                     <label class="ios-switch">
-                        <input type="checkbox" id="detail-auto-summary-switch">
+                        <input type="checkbox" id="detail-auto-summary-switch" onchange="saveChatDetail()">
                         <span class="slider"></span>
                     </label>
                 </div>
                 <div class="detail-item">
                     <div>每多少条总结</div>
-                    <input type="number" id="detail-summary-interval" placeholder="50" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;">
+                    <input type="number" id="detail-summary-interval" placeholder="50" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;" onchange="saveChatDetail()">
                 </div>
                 <div class="detail-item" onclick="showChatSummaries('private')" style="cursor:pointer;">
                     <div>查看总结记录</div>
@@ -5207,6 +5284,10 @@
                 <div style="font-size:15px; font-weight:500; color:#333; margin-bottom:4px;">自定义预设</div>
                 <div style="font-size:12px; color:#999; margin-bottom:12px;">追加到系统提示词末尾，可用于自定义场景、地点、规则等。留空则使用默认设定。</div>
                 <textarea id="offline-custom-preset" placeholder="例如：&#10;场景是在一家安静的咖啡厅里，窗外下着小雨...&#10;&#10;或者：&#10;请使用更加文学化的描写风格，多使用比喻和象征手法。" style="width:100%; min-height:150px; border:1px solid #e0e0e0; background:#fafafa; padding:12px; border-radius:8px; font-size:14px; color:#333; line-height:1.6; resize:vertical; outline:none; box-sizing:border-box; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;" onfocus="this.style.borderColor='#ffb3d1'" onblur="this.style.borderColor='#e0e0e0'"></textarea>
+                <div style="display:flex; gap:8px; margin-top:10px;">
+                    <button onclick="saveOfflinePresetAs('preset')" style="flex:1; padding:8px; background:#f0f4ff; color:#5b7ddb; border:1px solid #d8e2f8; border-radius:8px; font-size:13px; cursor:pointer; font-weight:500;">💾 保存为预设</button>
+                    <button onclick="showOfflinePresetList('preset')" style="flex:1; padding:8px; background:#fff7fa; color:#e77fa0; border:1px solid #fce0ea; border-radius:8px; font-size:13px; cursor:pointer; font-weight:500;">📂 加载预设</button>
+                </div>
             </div>
 
             <!-- 自定义气泡CSS -->
@@ -5221,6 +5302,10 @@
                     <code style="background:#f5f5f5; padding:1px 4px; border-radius:3px; font-size:11px;">.offline-msg-avatar</code> 头像
                 </div>
                 <textarea id="offline-custom-bubble-css" placeholder="例如：&#10;.offline-msg-bubble {&#10;  border-radius: 18px;&#10;  border: none;&#10;  box-shadow: 0 1px 3px rgba(0,0,0,0.1);&#10;}&#10;.offline-bubble-self {&#10;  background: #e8f5e9;&#10;}" style="width:100%; min-height:120px; border:1px solid #e0e0e0; background:#fafafa; padding:12px; border-radius:8px; font-size:13px; color:#333; line-height:1.6; resize:vertical; outline:none; box-sizing:border-box; font-family:'Courier New', monospace;" onfocus="this.style.borderColor='#ffb3d1'" onblur="this.style.borderColor='#e0e0e0'"></textarea>
+                <div style="display:flex; gap:8px; margin-top:10px;">
+                    <button onclick="saveOfflinePresetAs('bubblecss')" style="flex:1; padding:8px; background:#f0f4ff; color:#5b7ddb; border:1px solid #d8e2f8; border-radius:8px; font-size:13px; cursor:pointer; font-weight:500;">💾 保存为预设</button>
+                    <button onclick="showOfflinePresetList('bubblecss')" style="flex:1; padding:8px; background:#fff7fa; color:#e77fa0; border:1px solid #fce0ea; border-radius:8px; font-size:13px; cursor:pointer; font-weight:500;">📂 加载预设</button>
+                </div>
             </div>
 
             <!-- 保存按钮 -->

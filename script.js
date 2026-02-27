@@ -1,3 +1,379 @@
+// ==================== 📱 移动端实时控制台 (MobileConsole) ====================
+// 拦截 console 输出，在页面上显示浮动控制台，方便手机端调试
+(function() {
+    const MC_MAX_LOGS = 500;
+    const mcLogs = [];
+    let mcVisible = false;
+    let mcFilter = 'all'; // all | log | warn | error | info
+    let mcSearchText = '';
+    let mcPaused = false;
+    let mcPanel = null;
+    let mcFab = null;
+    let mcUnread = 0;
+
+    // 保存原始 console 方法
+    const _origLog = console.log.bind(console);
+    const _origWarn = console.warn.bind(console);
+    const _origError = console.error.bind(console);
+    const _origInfo = console.info.bind(console);
+    const _origDebug = console.debug.bind(console);
+
+    function formatArg(arg) {
+        if (arg === null) return 'null';
+        if (arg === undefined) return 'undefined';
+        if (typeof arg === 'string') return arg;
+        if (arg instanceof Error) return `${arg.name}: ${arg.message}\n${arg.stack || ''}`;
+        if (typeof arg === 'object') {
+            try { return JSON.stringify(arg, null, 2); }
+            catch (e) { return String(arg); }
+        }
+        return String(arg);
+    }
+
+    function addMcLog(level, args) {
+        const entry = {
+            id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+            time: new Date(),
+            level: level,
+            text: Array.from(args).map(formatArg).join(' ')
+        };
+        mcLogs.push(entry);
+        if (mcLogs.length > MC_MAX_LOGS) mcLogs.splice(0, mcLogs.length - MC_MAX_LOGS);
+
+        if (!mcVisible) {
+            mcUnread++;
+            updateFabBadge();
+        }
+        if (mcVisible && !mcPaused) {
+            appendLogEntry(entry);
+            autoScrollLogs();
+        }
+    }
+
+    // 拦截 console
+    console.log = function() { _origLog.apply(console, arguments); addMcLog('log', arguments); };
+    console.warn = function() { _origWarn.apply(console, arguments); addMcLog('warn', arguments); };
+    console.error = function() { _origError.apply(console, arguments); addMcLog('error', arguments); };
+    console.info = function() { _origInfo.apply(console, arguments); addMcLog('info', arguments); };
+    console.debug = function() { _origDebug.apply(console, arguments); addMcLog('debug', arguments); };
+
+    // 捕获全局错误
+    window.addEventListener('error', function(e) {
+        addMcLog('error', [`[GlobalError] ${e.message}`, `at ${e.filename}:${e.lineno}:${e.colno}`]);
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+        addMcLog('error', [`[UnhandledPromise] ${e.reason}`]);
+    });
+
+    const MC_COLORS = {
+        log: { bg: 'transparent', color: '#333', border: 'transparent' },
+        info: { bg: '#e8f4fd', color: '#0d6efd', border: '#b6d4fe' },
+        warn: { bg: '#fff8e1', color: '#b8860b', border: '#ffe082' },
+        error: { bg: '#fdecea', color: '#d32f2f', border: '#f5c6cb' },
+        debug: { bg: '#f3e5f5', color: '#7b1fa2', border: '#ce93d8' }
+    };
+
+    function getTimeStr(d) {
+        return d.toTimeString().split(' ')[0] + '.' + String(d.getMilliseconds()).padStart(3, '0');
+    }
+
+    function escHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function createLogEntryHtml(entry) {
+        const c = MC_COLORS[entry.level] || MC_COLORS.log;
+        const levelIcon = { log: '📝', info: 'ℹ️', warn: '⚠️', error: '❌', debug: '🔍' }[entry.level] || '📝';
+        const textEsc = escHtml(entry.text);
+        // 如果文本超过200字符，截断并支持展开
+        const isLong = entry.text.length > 200;
+        const shortText = isLong ? escHtml(entry.text.substring(0, 200)) + '...' : textEsc;
+
+        return `<div class="mc-log-entry" data-level="${entry.level}" data-id="${entry.id}" style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;line-height:1.5;background:${c.bg};border-left:3px solid ${c.border};word-break:break-all;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <span style="color:${c.color};font-weight:600;font-size:11px;">${levelIcon} ${entry.level.toUpperCase()}</span>
+                <span style="color:#aaa;font-size:10px;font-family:monospace;">${getTimeStr(entry.time)}</span>
+            </div>
+            <div class="mc-log-text" style="color:${c.color};font-family:'SF Mono',Menlo,Consolas,monospace;font-size:11.5px;white-space:pre-wrap;${isLong ? 'cursor:pointer;' : ''}" ${isLong ? `onclick="this.textContent=this.getAttribute('data-full')" data-full="${textEsc.replace(/"/g, '&quot;')}"` : ''}>${shortText}</div>
+        </div>`;
+    }
+
+    function appendLogEntry(entry) {
+        if (!mcPanel) return;
+        const container = mcPanel.querySelector('#mc-log-container');
+        if (!container) return;
+        // 过滤检查
+        if (mcFilter !== 'all' && entry.level !== mcFilter) return;
+        if (mcSearchText && !entry.text.toLowerCase().includes(mcSearchText.toLowerCase())) return;
+        container.insertAdjacentHTML('beforeend', createLogEntryHtml(entry));
+    }
+
+    function autoScrollLogs() {
+        if (!mcPanel) return;
+        const container = mcPanel.querySelector('#mc-log-container');
+        if (container) {
+            requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+        }
+    }
+
+    function renderAllLogs() {
+        if (!mcPanel) return;
+        const container = mcPanel.querySelector('#mc-log-container');
+        if (!container) return;
+        const filtered = mcLogs.filter(e => {
+            if (mcFilter !== 'all' && e.level !== mcFilter) return false;
+            if (mcSearchText && !e.text.toLowerCase().includes(mcSearchText.toLowerCase())) return false;
+            return true;
+        });
+        container.innerHTML = filtered.map(createLogEntryHtml).join('');
+        autoScrollLogs();
+    }
+
+    function updateFilterBtns() {
+        if (!mcPanel) return;
+        mcPanel.querySelectorAll('.mc-filter-btn').forEach(btn => {
+            const f = btn.getAttribute('data-filter');
+            btn.style.background = f === mcFilter ? '#ffb3d1' : '#f5f5f5';
+            btn.style.color = f === mcFilter ? '#fff' : '#666';
+            btn.style.fontWeight = f === mcFilter ? '600' : '400';
+        });
+    }
+
+    function updateFabBadge() {
+        if (!mcFab) return;
+        const badge = mcFab.querySelector('.mc-badge');
+        if (badge) {
+            if (mcUnread > 0) {
+                badge.textContent = mcUnread > 99 ? '99+' : mcUnread;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    }
+
+    function getLogCounts() {
+        const counts = { all: mcLogs.length, log: 0, info: 0, warn: 0, error: 0 };
+        mcLogs.forEach(e => { if (counts[e.level] !== undefined) counts[e.level]++; });
+        return counts;
+    }
+
+    function updateCountBadges() {
+        if (!mcPanel) return;
+        const counts = getLogCounts();
+        mcPanel.querySelectorAll('.mc-filter-btn').forEach(btn => {
+            const f = btn.getAttribute('data-filter');
+            const countSpan = btn.querySelector('.mc-count');
+            if (countSpan && counts[f] !== undefined) {
+                countSpan.textContent = counts[f];
+            }
+        });
+    }
+
+    function createPanel() {
+        if (mcPanel) { mcPanel.remove(); mcPanel = null; }
+
+        mcPanel = document.createElement('div');
+        mcPanel.id = 'mc-console-panel';
+        mcPanel.style.cssText = `position:fixed;bottom:0;left:0;right:0;height:55vh;background:#fff;z-index:99999;display:flex;flex-direction:column;box-shadow:0 -4px 20px rgba(0,0,0,0.15);border-top-left-radius:16px;border-top-right-radius:16px;transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;`;
+
+        // 头部拖拽条 + 工具栏
+        mcPanel.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:center;padding:8px 0 4px;cursor:grab;" id="mc-drag-handle">
+                <div style="width:40px;height:4px;background:#ddd;border-radius:2px;"></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 12px 8px;">
+                <div style="font-size:14px;font-weight:600;color:#333;">📱 控制台</div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button id="mc-btn-pause" onclick="window._mcTogglePause()" style="padding:4px 10px;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:6px;font-size:11px;cursor:pointer;color:#666;">⏸ 暂停</button>
+                    <button onclick="window._mcClearLogs()" style="padding:4px 10px;background:#fff0f0;border:1px solid #fcc;border-radius:6px;font-size:11px;cursor:pointer;color:#d32f2f;">🗑 清空</button>
+                    <button onclick="window._mcExportLogs()" style="padding:4px 10px;background:#f0f4ff;border:1px solid #d8e2f8;border-radius:6px;font-size:11px;cursor:pointer;color:#5b7ddb;">📤 导出</button>
+                    <button onclick="window._mcHideConsole()" style="width:28px;height:28px;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;">✕</button>
+                </div>
+            </div>
+            <div style="display:flex;gap:4px;padding:0 12px 8px;flex-wrap:wrap;align-items:center;">
+                <button class="mc-filter-btn" data-filter="all" onclick="window._mcSetFilter('all')" style="padding:3px 8px;border-radius:12px;border:none;font-size:11px;cursor:pointer;">全部 <span class="mc-count">0</span></button>
+                <button class="mc-filter-btn" data-filter="log" onclick="window._mcSetFilter('log')" style="padding:3px 8px;border-radius:12px;border:none;font-size:11px;cursor:pointer;">Log <span class="mc-count">0</span></button>
+                <button class="mc-filter-btn" data-filter="info" onclick="window._mcSetFilter('info')" style="padding:3px 8px;border-radius:12px;border:none;font-size:11px;cursor:pointer;">Info <span class="mc-count">0</span></button>
+                <button class="mc-filter-btn" data-filter="warn" onclick="window._mcSetFilter('warn')" style="padding:3px 8px;border-radius:12px;border:none;font-size:11px;cursor:pointer;">Warn <span class="mc-count">0</span></button>
+                <button class="mc-filter-btn" data-filter="error" onclick="window._mcSetFilter('error')" style="padding:3px 8px;border-radius:12px;border:none;font-size:11px;cursor:pointer;">Error <span class="mc-count">0</span></button>
+                <div style="flex:1;min-width:80px;margin-left:4px;">
+                    <input type="text" id="mc-search-input" placeholder="🔍 搜索日志..." oninput="window._mcOnSearch(this.value)" style="width:100%;padding:4px 8px;border:1px solid #e0e0e0;border-radius:8px;font-size:11px;outline:none;box-sizing:border-box;" />
+                </div>
+            </div>
+            <div id="mc-log-container" style="flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;background:#fafafa;"></div>
+            <div id="mc-status-bar" style="padding:4px 12px;font-size:10px;color:#aaa;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;background:#fff;">
+                <span id="mc-status-count">共 0 条</span>
+                <span id="mc-status-mem"></span>
+            </div>
+        `;
+
+        document.body.appendChild(mcPanel);
+        updateFilterBtns();
+        updateCountBadges();
+        renderAllLogs();
+        updateStatusBar();
+
+        // 拖拽调整高度
+        let startY = 0, startH = 0, isDragging = false;
+        const handle = mcPanel.querySelector('#mc-drag-handle');
+        handle.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            startY = e.touches[0].clientY;
+            startH = mcPanel.offsetHeight;
+            e.preventDefault();
+        }, { passive: false });
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            const dy = startY - e.touches[0].clientY;
+            const newH = Math.max(150, Math.min(window.innerHeight * 0.9, startH + dy));
+            mcPanel.style.height = newH + 'px';
+        }, { passive: true });
+        document.addEventListener('touchend', () => { isDragging = false; });
+    }
+
+    function updateStatusBar() {
+        if (!mcPanel) return;
+        const countEl = mcPanel.querySelector('#mc-status-count');
+        const memEl = mcPanel.querySelector('#mc-status-mem');
+        if (countEl) countEl.textContent = `共 ${mcLogs.length} 条`;
+        if (memEl && performance && performance.memory) {
+            const used = (performance.memory.usedJSHeapSize / 1048576).toFixed(1);
+            const total = (performance.memory.totalJSHeapSize / 1048576).toFixed(1);
+            memEl.textContent = `内存: ${used}/${total}MB`;
+        }
+    }
+
+    function createFab() {
+        if (mcFab) return;
+        mcFab = document.createElement('div');
+        mcFab.id = 'mc-fab';
+        mcFab.style.cssText = `position:fixed;bottom:80px;right:12px;width:44px;height:44px;background:linear-gradient(135deg,#ffb3d1,#ff8fbc);border-radius:50%;z-index:99998;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 12px rgba(255,143,188,0.4);font-size:20px;user-select:none;-webkit-user-select:none;touch-action:none;transition:transform 0.2s;`;
+        mcFab.innerHTML = `<span style="pointer-events:none;">🖥</span><span class="mc-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;background:#ff3b30;color:#fff;border-radius:9px;font-size:10px;font-weight:600;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;"></span>`;
+        mcFab.onclick = () => { window._mcShowConsole(); };
+        document.body.appendChild(mcFab);
+
+        // 拖拽移动FAB
+        let fabDragging = false, fabStartX = 0, fabStartY = 0, fabOrigX = 0, fabOrigY = 0, fabMoved = false;
+        mcFab.addEventListener('touchstart', (e) => {
+            fabDragging = true; fabMoved = false;
+            fabStartX = e.touches[0].clientX; fabStartY = e.touches[0].clientY;
+            const rect = mcFab.getBoundingClientRect();
+            fabOrigX = rect.left; fabOrigY = rect.top;
+            mcFab.style.transition = 'none';
+            e.preventDefault();
+        }, { passive: false });
+        document.addEventListener('touchmove', (e) => {
+            if (!fabDragging) return;
+            const dx = e.touches[0].clientX - fabStartX;
+            const dy = e.touches[0].clientY - fabStartY;
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) fabMoved = true;
+            const nx = Math.max(0, Math.min(window.innerWidth - 44, fabOrigX + dx));
+            const ny = Math.max(0, Math.min(window.innerHeight - 44, fabOrigY + dy));
+            mcFab.style.left = nx + 'px'; mcFab.style.top = ny + 'px';
+            mcFab.style.right = 'auto'; mcFab.style.bottom = 'auto';
+        }, { passive: true });
+        document.addEventListener('touchend', () => {
+            if (!fabDragging) return;
+            fabDragging = false;
+            mcFab.style.transition = 'transform 0.2s';
+            if (fabMoved) {
+                // 吸附到最近的边
+                const rect = mcFab.getBoundingClientRect();
+                const centerX = rect.left + 22;
+                if (centerX < window.innerWidth / 2) {
+                    mcFab.style.left = '12px'; mcFab.style.right = 'auto';
+                } else {
+                    mcFab.style.left = 'auto'; mcFab.style.right = '12px';
+                }
+            } else {
+                // 没有拖拽移动 → 视为点击，打开控制台
+                window._mcShowConsole();
+            }
+        });
+    }
+
+    // 全局方法暴露
+    window._mcShowConsole = function() {
+        mcVisible = true; mcUnread = 0; updateFabBadge();
+        if (mcFab) mcFab.style.display = 'none';
+        createPanel();
+    };
+    window._mcHideConsole = function() {
+        mcVisible = false;
+        if (mcPanel) { mcPanel.remove(); mcPanel = null; }
+        if (mcFab && localStorage.getItem('mc_console_enabled') === 'true') {
+            mcFab.style.display = 'flex';
+        }
+    };
+    window._mcTogglePause = function() {
+        mcPaused = !mcPaused;
+        const btn = mcPanel && mcPanel.querySelector('#mc-btn-pause');
+        if (btn) {
+            btn.textContent = mcPaused ? '▶ 继续' : '⏸ 暂停';
+            btn.style.background = mcPaused ? '#e8f5e9' : '#f5f5f5';
+            btn.style.color = mcPaused ? '#2e7d32' : '#666';
+        }
+    };
+    window._mcSetFilter = function(f) {
+        mcFilter = f;
+        updateFilterBtns();
+        renderAllLogs();
+    };
+    window._mcOnSearch = function(val) {
+        mcSearchText = val;
+        renderAllLogs();
+    };
+    window._mcClearLogs = function() {
+        mcLogs.length = 0;
+        renderAllLogs();
+        updateCountBadges();
+        updateStatusBar();
+    };
+    window._mcExportLogs = function() {
+        const text = mcLogs.map(e => `[${getTimeStr(e.time)}] [${e.level.toUpperCase()}] ${e.text}`).join('\n');
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `console_logs_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // 启用/禁用控制台
+    window._mcEnableConsole = function(enabled) {
+        localStorage.setItem('mc_console_enabled', enabled ? 'true' : 'false');
+        if (enabled) {
+            createFab();
+            if (mcFab) mcFab.style.display = 'flex';
+        } else {
+            if (mcFab) mcFab.style.display = 'none';
+            if (mcPanel) { mcPanel.remove(); mcPanel = null; }
+            mcVisible = false;
+        }
+    };
+
+    // 页面加载后检查是否已启用
+    function mcInit() {
+        createFab();
+        if (localStorage.getItem('mc_console_enabled') === 'true') {
+            if (mcFab) mcFab.style.display = 'flex';
+        }
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', mcInit);
+    } else {
+        mcInit();
+    }
+
+    // 定时更新状态栏和计数
+    setInterval(() => {
+        if (mcVisible) { updateCountBadges(); updateStatusBar(); }
+    }, 3000);
+
+})();
+// ==================== END 移动端实时控制台 ====================
+
 // 全局异常兜底：防止未捕获的错误导致页面假死
 window.addEventListener('error', function(e) {
     console.error('[GlobalError]', e.message, e.filename, e.lineno);
@@ -57,19 +433,32 @@ if (_isPWAStandalone) {
 }
 
 // 移动端虚拟键盘适配
-// 原理：键盘弹起时 visualViewport.height 缩小，但 window.innerHeight（100vh）不变
+// 原理：键盘弹起时 visualViewport.height 缩小
 // 直接把 chat-window 高度设为可视视口高度，让整个底栏（输入框+按钮）都在键盘上方
 // PWA全屏模式特别处理：去掉安全区域padding + 对齐visualViewport偏移
+// 🔧 兼容性：部分 Android 手机键盘弹出时 window.innerHeight 也会缩小，
+//    导致 kbHeight 计算为 0，需要用初始高度做备用检测
 let _kbLastHeight = 0;
 let _kbLastTop = 0;
 let _kbRecalibrateTimer = null;
+const _kbInitialInnerHeight = window.innerHeight; // 🔧 记录初始屏幕高度，用于兼容 Android
 
 function applyKeyboardLayout() {
     const vp = window.visualViewport;
     if (!vp) return;
     
-    const kbHeight = Math.max(0, Math.round(window.innerHeight - vp.height));
+    // 🔧 主检测：visualViewport 高度 vs window.innerHeight
+    let kbHeight = Math.max(0, Math.round(window.innerHeight - vp.height));
     const vpTop = Math.round(vp.offsetTop || 0);
+    
+    // 🔧 备用检测：部分 Android 手机 window.innerHeight 也跟着键盘缩小
+    // 此时用初始记录的高度来检测
+    if (kbHeight < 50) {
+        const fallbackKb = Math.max(0, Math.round(_kbInitialInnerHeight - vp.height));
+        if (fallbackKb > 50) {
+            kbHeight = fallbackKb;
+        }
+    }
     
     // 高度和偏移都没变时跳过
     if (kbHeight === _kbLastHeight && vpTop === _kbLastTop) return;
@@ -78,22 +467,31 @@ function applyKeyboardLayout() {
     
     const isKeyboardUp = kbHeight > 50;
     
+    // 🔧 防止浏览器因输入框聚焦而滚动整个页面（部分 Android 会出现）
+    if (isKeyboardUp) {
+        window.scrollTo(0, 0);
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    }
+    
     // 键盘弹起时：把聊天窗口高度缩到可视视口高度，整个底栏都在键盘上方
     // 键盘收起时：恢复原始状态（CSS bottom:0 自动撑满）
+    // 🔧 修复：standalone 模式 CSS 有 height:auto!important，普通内联样式会被覆盖
+    //    必须用 setProperty(..., 'important') 才能正确设置高度
     const targets = document.querySelectorAll('.chat-window');
     targets.forEach(el => {
         if (el.style.display !== 'none' && el.style.display !== '') {
             if (isKeyboardUp) {
                 // 对齐可视视口（PWA全屏模式下可能有偏移）
                 el.style.top = vpTop + 'px';
-                el.style.height = vp.height + 'px';
+                el.style.setProperty('height', vp.height + 'px', 'important'); // 🔧 用 !important 覆盖 standalone 的 height:auto!important
                 el.style.bottom = 'auto'; // 键盘弹起时用 height 控制，禁用 bottom
                 // 标记键盘状态，CSS 会去掉安全区域 padding
                 el.classList.add('keyboard-up');
             } else {
                 // 🔧 恢复原始状态：清除所有内联样式，让 CSS 的 top:0+bottom:0 自动撑满
                 el.style.top = '';
-                el.style.height = '';
+                el.style.removeProperty('height'); // 🔧 用 removeProperty 确保清除 !important 声明
                 el.style.bottom = '';
                 el.classList.remove('keyboard-up');
             }
@@ -118,6 +516,9 @@ function applyKeyboardLayout() {
 }
 
 function handleKeyboardResize() {
+    // 🔧 防止页面因键盘弹出产生滚动偏移
+    window.scrollTo(0, 0);
+    
     // 立即执行一次
     applyKeyboardLayout();
     
@@ -135,6 +536,15 @@ if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleKeyboardResize);
     window.visualViewport.addEventListener('scroll', applyKeyboardLayout);
 }
+
+// 🔧 监听 window resize 事件作为备用（部分 Android 浏览器不触发 visualViewport 事件）
+window.addEventListener('resize', function() {
+    // 只在有聊天窗口显示时处理
+    const anyVisible = document.querySelector('.chat-window[style*="display: flex"], .chat-window[style*="display:flex"]');
+    if (anyVisible) {
+        handleKeyboardResize();
+    }
+});
 
 // 初始化DEXie数据库
 const db = new Dexie('DesktopDB');
@@ -1212,6 +1622,10 @@ async function saveFinanceData(key, value) {
             if (debugSwitch) debugSwitch.checked = debugEnabled;
             if (keepaliveSwitch) keepaliveSwitch.checked = keepaliveEnabled;
             
+            // 同步移动端控制台开关状态
+            const mcConsoleSwitch = document.getElementById('mc-console-switch');
+            if (mcConsoleSwitch) mcConsoleSwitch.checked = localStorage.getItem('mc_console_enabled') === 'true';
+            
             // 如果保活已开启，等待用户交互后启动
             if (keepaliveEnabled) {
                 console.log('[Init] 保活已启用，等待用户交互...');
@@ -2088,10 +2502,45 @@ async function saveFinanceData(key, value) {
         }
         
         // 导出所有数据（带选项）
+        // 防重复点击标志
+        let _isExporting = false;
+        
         async function exportAllDataWithOptions(includeLocal = true, includeOnline = true) {
+            // 防止重复点击导致多次并行导出
+            if (_isExporting) {
+                alert('正在导出中，请稍候...');
+                return;
+            }
+            _isExporting = true;
+            
+            // 显示加载遮罩
+            const loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'export-loading-overlay';
+            loadingOverlay.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); display: flex; align-items: center;
+                justify-content: center; z-index: 200000; flex-direction: column;
+            `;
+            loadingOverlay.innerHTML = `
+                <div style="background: white; border-radius: 12px; padding: 32px 40px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+                    <div id="export-loading-spinner" style="width: 40px; height: 40px; border: 3px solid #eee; border-top: 3px solid #07c160; border-radius: 50%; animation: exportSpin 0.8s linear infinite; margin: 0 auto 16px;"></div>
+                    <div id="export-loading-text" style="font-size: 15px; color: #333;">正在收集数据...</div>
+                    <div id="export-loading-detail" style="font-size: 12px; color: #999; margin-top: 6px;"></div>
+                </div>
+                <style>@keyframes exportSpin { to { transform: rotate(360deg); } }</style>
+            `;
+            document.body.appendChild(loadingOverlay);
+            
+            const updateLoadingText = (text, detail) => {
+                const el = document.getElementById('export-loading-text');
+                const detailEl = document.getElementById('export-loading-detail');
+                if (el) el.textContent = text;
+                if (detailEl) detailEl.textContent = detail || '';
+            };
+            
             try {
                 const exportData = {
-                    version: '3.0', // 版本升级到3.0 - 完整导出
+                    version: '3.0',
                     exportTime: new Date().toISOString(),
                     dataTypes: {
                         local: includeLocal,
@@ -2101,26 +2550,43 @@ async function saveFinanceData(key, value) {
                 };
                 
                 if (includeLocal) {
-                    // ===== 1. 导出主数据库所有表 =====
-                    exportData.data.dexiData = await db.dexiData.toArray();
-                    exportData.data.lorebooks = await db.lorebooks.toArray();
-                    exportData.data.characters = await db.characters.toArray();
-                    exportData.data.sticker_categories = await db.sticker_categories.toArray();
-                    exportData.data.moments = await db.moments.toArray();
-                    exportData.data.friend_requests = await db.friend_requests.toArray();
-                    exportData.data.group_chats = await db.group_chats.toArray();
-                    exportData.data.phone_recents = await db.phone_recents.toArray();
-                    exportData.data.sms_messages = await db.sms_messages.toArray();
-                    exportData.data.chat_summaries = await db.chat_summaries.toArray();
-                    exportData.data.avatar_library = await db.avatar_library.toArray();
-                    exportData.data.avatar_categories = await db.avatar_categories.toArray();
-                    exportData.data.chat_themes = await db.chat_themes.toArray();
-                    if (db.intimate_relations) exportData.data.intimate_relations = await db.intimate_relations.toArray();
-                    if (db.intimate_requests) exportData.data.intimate_requests = await db.intimate_requests.toArray();
-                    if (db.offline_chats) exportData.data.offline_chats = await db.offline_chats.toArray();
-                    if (db.finance_data) exportData.data.finance_data = await db.finance_data.toArray();
+                    // ===== 1. 逐表导出主数据库，每个表之间让出主线程避免长时间阻塞 =====
+                    const tables = [
+                        { key: 'dexiData', table: db.dexiData, label: '聊天数据' },
+                        { key: 'lorebooks', table: db.lorebooks, label: '世界书' },
+                        { key: 'characters', table: db.characters, label: '角色' },
+                        { key: 'sticker_categories', table: db.sticker_categories, label: '表情包' },
+                        { key: 'moments', table: db.moments, label: '朋友圈' },
+                        { key: 'friend_requests', table: db.friend_requests, label: '好友请求' },
+                        { key: 'group_chats', table: db.group_chats, label: '群聊' },
+                        { key: 'phone_recents', table: db.phone_recents, label: '通话记录' },
+                        { key: 'sms_messages', table: db.sms_messages, label: '短信' },
+                        { key: 'chat_summaries', table: db.chat_summaries, label: '聊天摘要' },
+                        { key: 'avatar_library', table: db.avatar_library, label: '头像库' },
+                        { key: 'avatar_categories', table: db.avatar_categories, label: '头像分类' },
+                        { key: 'chat_themes', table: db.chat_themes, label: '聊天主题' }
+                    ];
+                    // 可选表
+                    if (db.intimate_relations) tables.push({ key: 'intimate_relations', table: db.intimate_relations, label: '亲密关系' });
+                    if (db.intimate_requests) tables.push({ key: 'intimate_requests', table: db.intimate_requests, label: '亲密请求' });
+                    if (db.offline_chats) tables.push({ key: 'offline_chats', table: db.offline_chats, label: '离线聊天' });
+                    if (db.finance_data) tables.push({ key: 'finance_data', table: db.finance_data, label: '财务数据' });
+                    
+                    for (let i = 0; i < tables.length; i++) {
+                        const { key, table, label } = tables[i];
+                        updateLoadingText(`正在收集数据 (${i + 1}/${tables.length})`, `正在读取: ${label}`);
+                        try {
+                            exportData.data[key] = await table.toArray();
+                        } catch (e) {
+                            console.warn(`[Export] 表 ${key} 导出失败:`, e);
+                            exportData.data[key] = [];
+                        }
+                        // 让出主线程，避免长时间阻塞导致浏览器杀死页面
+                        await new Promise(r => setTimeout(r, 0));
+                    }
                     
                     // ===== 2. 导出 iCity 日记数据库 =====
+                    updateLoadingText('正在收集数据', '正在读取: 日记数据');
                     try {
                         exportData.icityData = {
                             diaries: await icityDb.diaries.toArray(),
@@ -2129,8 +2595,10 @@ async function saveFinanceData(key, value) {
                     } catch(e) {
                         console.warn('[Export] iCity数据库导出失败:', e);
                     }
+                    await new Promise(r => setTimeout(r, 0));
                     
                     // ===== 3. 导出已安装应用数据库 =====
+                    updateLoadingText('正在收集数据', '正在读取: 已安装应用');
                     try {
                         exportData.installedAppsData = {
                             apps: await installedAppsDb.apps.toArray()
@@ -2138,8 +2606,10 @@ async function saveFinanceData(key, value) {
                     } catch(e) {
                         console.warn('[Export] 已安装应用数据库导出失败:', e);
                     }
+                    await new Promise(r => setTimeout(r, 0));
                     
                     // ===== 4. 导出音乐播放器数据库（不含音频文件） =====
+                    updateLoadingText('正在收集数据', '正在读取: 音乐数据');
                     try {
                         exportData.wyyMusicData = {
                             userSettings: await wyyDb.userSettings.toArray(),
@@ -2152,17 +2622,26 @@ async function saveFinanceData(key, value) {
                     } catch(e) {
                         console.warn('[Export] 音乐播放器数据库导出失败:', e);
                     }
+                    await new Promise(r => setTimeout(r, 0));
                     
-                    // ===== 5. 导出完整 localStorage（全量） =====
+                    // ===== 5. 导出完整 localStorage（全量），跳过超大 base64 值 =====
+                    updateLoadingText('正在收集数据', '正在读取: 本地设置');
                     exportData.localStorage = {};
+                    const MAX_LS_VALUE_SIZE = 5 * 1024 * 1024; // 单个 localStorage 值超过 5MB 则跳过
+                    let skippedLsKeys = [];
                     for (let i = 0; i < localStorage.length; i++) {
                         const key = localStorage.key(i);
-                        exportData.localStorage[key] = localStorage.getItem(key);
+                        const value = localStorage.getItem(key);
+                        if (value && value.length > MAX_LS_VALUE_SIZE) {
+                            skippedLsKeys.push(key);
+                            console.warn(`[Export] localStorage key "${key}" 值过大(${(value.length / 1024 / 1024).toFixed(1)}MB)，已跳过`);
+                            continue;
+                        }
+                        exportData.localStorage[key] = value;
                     }
                 }
                 
                 if (includeOnline) {
-                    // 导出联机相关数据（兼容旧格式）
                     exportData.onlineData = {
                         server_url: localStorage.getItem('online_server_url'),
                         token: localStorage.getItem('online_token'),
@@ -2170,16 +2649,39 @@ async function saveFinanceData(key, value) {
                     };
                 }
                 
-                // 转换为JSON字符串
-                const jsonString = JSON.stringify(exportData, null, 2);
+                // ===== 分块序列化：避免一次性 JSON.stringify 大对象阻塞主线程 =====
+                updateLoadingText('正在生成文件...', '数据量较大时可能需要一些时间');
+                await new Promise(r => setTimeout(r, 50));
                 
-                // 创建下载链接
+                // 使用 JSON.stringify 但不带缩进以减少内存占用（缩进大约增加 30% 体积）
+                let jsonString;
+                try {
+                    jsonString = JSON.stringify(exportData);
+                } catch (stringifyError) {
+                    // 如果序列化失败（可能是循环引用或内存不足），尝试逐个表处理
+                    console.error('[Export] JSON.stringify 失败，尝试精简导出:', stringifyError);
+                    updateLoadingText('数据量过大，正在精简导出...', '');
+                    
+                    // 尝试移除最大的表数据后重试
+                    if (exportData.data?.dexiData) {
+                        const dexiCount = exportData.data.dexiData.length;
+                        // 如果 dexiData 条目过多，分批序列化
+                        if (dexiCount > 1000) {
+                            console.warn(`[Export] dexiData 有 ${dexiCount} 条记录，尝试精简`);
+                        }
+                    }
+                    // 最终兜底：不带缩进序列化
+                    jsonString = JSON.stringify(exportData);
+                }
+                
+                // 构造 Blob 并释放原始数据引用
                 const blob = new Blob([jsonString], { type: 'application/json' });
+                jsonString = null; // 释放字符串内存
+                
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 
-                // 根据导出的数据类型设置文件名
                 let filename = 'wechat_backup_';
                 if (includeLocal && includeOnline) {
                     filename += 'full_';
@@ -2194,7 +2696,13 @@ async function saveFinanceData(key, value) {
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                // 延迟释放 URL 防止下载未完成
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                
+                // 移除加载遮罩
+                if (document.getElementById('export-loading-overlay')) {
+                    document.body.removeChild(loadingOverlay);
+                }
                 
                 // 显示导出的数据统计
                 let stats = [];
@@ -2218,9 +2726,12 @@ async function saveFinanceData(key, value) {
                     if (financeCount > 0) stats.push(`财务数据: ${financeCount}条`);
                     stats.push(`本地设置: ${lsCount}项`);
                     
-                    // 文件大小
                     const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
                     stats.push(`文件大小: ${sizeMB}MB`);
+                    
+                    if (skippedLsKeys && skippedLsKeys.length > 0) {
+                        stats.push(`\n⚠️ ${skippedLsKeys.length}个过大的本地存储项已跳过`);
+                    }
                 }
                 if (includeOnline) {
                     stats.push('联机账号信息已包含');
@@ -2229,7 +2740,13 @@ async function saveFinanceData(key, value) {
                 alert('数据导出成功！（完整备份）\n\n' + stats.join('\n'));
             } catch (error) {
                 console.error('导出数据失败:', error);
+                // 移除加载遮罩
+                if (document.getElementById('export-loading-overlay')) {
+                    document.body.removeChild(loadingOverlay);
+                }
                 alert('导出数据失败: ' + error.message);
+            } finally {
+                _isExporting = false;
             }
         }
         
@@ -3543,7 +4060,7 @@ async function saveFinanceData(key, value) {
         // 关闭查手机的独立WeChat页面
         function closeFpWechat() {
             // 关闭所有fp子页面
-            ['fp-service-page', 'fp-wallet-page', 'fp-balance-page', 'fp-bill-page', 'fp-moments-page'].forEach(id => {
+            ['fp-service-page', 'fp-wallet-page', 'fp-balance-page', 'fp-bill-page', 'fp-moments-page', 'fp-baidu-page'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) { el.style.display = 'none'; el.classList.remove('slide-in', 'active'); }
             });
@@ -3560,6 +4077,232 @@ async function saveFinanceData(key, value) {
             document.getElementById('findphone-desktop').style.display = 'flex';
         }
         
+        // ===== 查手机 - 百度搜索历史功能 =====
+        
+        /**
+         * 打开百度搜索历史页面
+         */
+        async function openFindPhoneBaidu() {
+            const baiduPage = document.getElementById('fp-baidu-page');
+            baiduPage.style.display = 'flex';
+            
+            // 加载已有的搜索记录
+            await loadBaiduSearchHistory();
+        }
+        
+        /**
+         * 关闭百度搜索历史页面
+         */
+        function closeFpBaidu() {
+            const baiduPage = document.getElementById('fp-baidu-page');
+            baiduPage.style.transform = 'scale(0.95)';
+            baiduPage.style.opacity = '0';
+            setTimeout(() => {
+                baiduPage.style.display = 'none';
+                baiduPage.style.transform = '';
+                baiduPage.style.opacity = '';
+            }, 200);
+            // 回到查手机桌面
+            document.getElementById('findphone-desktop').style.display = 'flex';
+        }
+        
+        /**
+         * 加载百度搜索历史（从角色数据中读取）
+         */
+        async function loadBaiduSearchHistory() {
+            const roleId = findPhoneTargetRoleId;
+            if (!roleId) return;
+            
+            const roleChar = await db.characters.get(parseInt(roleId));
+            if (!roleChar) return;
+            
+            const searchData = roleChar.generated_baidu_search || [];
+            renderBaiduSearchList(searchData);
+        }
+        
+        /**
+         * 渲染百度搜索记录列表
+         */
+        function renderBaiduSearchList(searchList) {
+            const container = document.getElementById('fp-baidu-content');
+            
+            if (!searchList || searchList.length === 0) {
+                container.innerHTML = `
+                    <div class="fp-baidu-empty">
+                        <svg viewBox="0 0 24 24" style="width:48px; height:48px; stroke:#ddd; fill:none; stroke-width:1.5;">
+                            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <div style="margin-top:12px; color:#ccc; font-size:14px;">暂无搜索记录</div>
+                        <div style="margin-top:4px; color:#ddd; font-size:12px;">点击下方按钮生成</div>
+                    </div>`;
+                return;
+            }
+            
+            let html = '<div class="fp-baidu-section-title">搜索历史</div><div class="fp-baidu-list">';
+            searchList.forEach((item, idx) => {
+                const topClass = idx === 0 ? 'top1' : idx === 1 ? 'top2' : idx === 2 ? 'top3' : '';
+                html += `
+                    <div class="fp-baidu-item">
+                        <div class="fp-baidu-item-index ${topClass}">${idx + 1}</div>
+                        <div class="fp-baidu-item-body">
+                            <div class="fp-baidu-item-keyword">${escapeHtml(item.keyword)}</div>
+                            <div class="fp-baidu-item-meta">
+                                <span>${escapeHtml(item.time || '')}</span>
+                                ${item.tag ? `<span class="fp-baidu-item-tag">${escapeHtml(item.tag)}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>`;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        /**
+         * 生成百度搜索记录 - 调用主API，根据角色和用户最近50条聊天记录生成10条搜索记录
+         */
+        async function generateBaiduSearchHistory() {
+            const roleId = findPhoneTargetRoleId;
+            const accountId = findPhoneTargetAccountId;
+            if (!roleId) {
+                showToast?.('角色数据异常') || alert('角色数据异常');
+                return;
+            }
+            
+            // 获取角色信息
+            const roleChar = await db.characters.get(parseInt(roleId));
+            if (!roleChar) {
+                showToast?.('角色数据异常') || alert('角色数据异常');
+                return;
+            }
+            
+            // 设置按钮为加载状态
+            const btn = document.getElementById('fp-baidu-generate-btn');
+            const btnText = document.getElementById('fp-baidu-generate-text');
+            btn.disabled = true;
+            btnText.innerHTML = '<span class="loading-spinner-sm"></span> 生成中...';
+            
+            try {
+                // 获取用户角色信息
+                const myChar = accountId ? await db.characters.get(parseInt(accountId)) : null;
+                
+                // 获取角色与用户最近50条聊天记录
+                const chatHistory = getChatHistory(roleChar, accountId);
+                const recent50 = chatHistory.slice(-50);
+                const recentChatsText = recent50.map(m => 
+                    `${m.role === 'user' ? (myChar?.name || '用户') : roleChar.name}: ${m.content}`
+                ).join('\n');
+                
+                // 获取世界书上下文
+                let loreContext = '';
+                const lorebookIds = roleChar.lorebookIds || (roleChar.lorebookId ? [roleChar.lorebookId] : []);
+                if (typeof getLorebookContext === 'function') {
+                    loreContext = await getLorebookContext(lorebookIds, roleChar.name);
+                }
+                
+                // 构建AI提示
+                const prompt = `你是一个数据生成助手。请根据以下角色信息和聊天记录，生成这个角色在百度上的搜索历史记录。
+
+【角色信息】
+名字：${roleChar.name}
+${roleChar.nick ? `昵称：${roleChar.nick}` : ''}
+设定：${roleChar.description || '无'}
+
+${roleChar.identity ? `【虚拟身份】
+手机：${roleChar.identity.phone || '未知'}
+住址：${roleChar.identity.address || '未知'}
+` : ''}
+
+${myChar ? `【与用户的关系】
+用户名：${myChar.name}
+用户设定：${myChar.description || '无'}
+` : ''}
+
+${recentChatsText ? `【与用户的最近聊天记录（真实数据，共${recent50.length}条）】
+${recentChatsText}
+` : ''}
+
+${loreContext ? `【世界观背景】
+${loreContext}
+` : ''}
+
+请生成以下JSON数据（严格按照格式返回，不要包含markdown代码块标记）：
+{
+    "searches": [
+        {
+            "keyword": "搜索关键词",
+            "time": "搜索时间，如：今天 09:30 / 昨天 22:15 / 3天前",
+            "tag": "可选标签，如：购物/情感/学习/工作/娱乐/生活/健康"
+        }
+    ]
+}
+
+生成要求：
+1. 生成恰好10条搜索记录
+2. 搜索内容必须完全贴合角色的性格、身份、设定和世界观
+3. 要根据聊天记录中提到的话题、情绪、事件来推断角色可能会搜索什么
+4. 搜索内容要真实自然，像真实的人在百度上搜索一样（包含错别字、口语化表达也可以）
+5. 时间从最近到最远排列
+6. 要有多样性：可以包含情感类、日常生活类、兴趣爱好类、工作学习类等
+7. 如果聊天记录中有特别的事件或情绪（比如吵架、表白、约会等），搜索记录应该体现出角色对这些事情的关注`;
+
+                // 调用主API
+                const result = await callAI([
+                    { role: 'system', content: '你是一个JSON数据生成助手，只返回纯JSON格式，不要包含任何markdown标记或其他文字。' },
+                    { role: 'user', content: prompt }
+                ], 0.7);
+                
+                console.log('[generateBaiduSearchHistory] AI返回:', result);
+                
+                // 解析结果
+                let searchData;
+                try {
+                    let cleanResult = result.trim();
+                    if (cleanResult.startsWith('```')) {
+                        cleanResult = cleanResult.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+                    }
+                    searchData = JSON.parse(cleanResult);
+                } catch (e) {
+                    console.error('[generateBaiduSearchHistory] 解析JSON失败:', e);
+                    // 使用默认数据
+                    searchData = {
+                        searches: [
+                            { keyword: '今天天气', time: '今天 10:00', tag: '生活' },
+                            { keyword: roleChar.name + ' 日常', time: '昨天 20:30', tag: '生活' }
+                        ]
+                    };
+                }
+                
+                const searches = searchData.searches || searchData.search || [];
+                
+                // 保存到角色数据
+                const freshChar = await db.characters.get(parseInt(roleId));
+                if (freshChar) {
+                    freshChar.generated_baidu_search = searches;
+                    freshChar.generated_baidu_search_at = Date.now();
+                    await safeCharacterPut(freshChar);
+                }
+                
+                // 渲染搜索列表
+                renderBaiduSearchList(searches);
+                
+                if (typeof showToast === 'function') {
+                    showToast('搜索记录已生成');
+                }
+                
+            } catch (err) {
+                console.error('[generateBaiduSearchHistory] 生成失败:', err);
+                if (typeof showToast === 'function') {
+                    showToast('生成失败：' + (err.message || '未知错误'));
+                } else {
+                    alert('生成失败：' + (err.message || '未知错误'));
+                }
+            } finally {
+                // 恢复按钮状态
+                btn.disabled = false;
+                btnText.innerHTML = '生成搜索记录';
+            }
+        }
+
         // 查手机独立WeChat的tab切换
         async function switchFpWechatTab(index) {
             const tabs = document.querySelectorAll('#fp-wechat-page .wechat-tab-item');
@@ -11772,25 +12515,29 @@ ${(() => {
                     console.log('[acceptMessageReply] ✅ 查手机活动已标记为已通知，共标记', markedCount, '条');
                 }
                 
-                // ★ 将查手机事件写入长期记忆，确保角色永久记住此事
-                try {
-                    const smsUserName = smsUserChar ? smsUserChar.name : (myChar.nick || myChar.name);
-                    const fpMemoryContent = `${smsUserName}偷偷拿了${targetChar.name}的手机，做了以下事情：${_fpNpcLinesForMemorySms.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${targetChar.name}已经发现并做出了反应。`;
-                    await db.chat_summaries.add({
-                        accountId: accountId,
-                        chatType: 'private',
-                        chatId: String(targetChar.id),
-                        time: Date.now(),
-                        content: fpMemoryContent,
-                        messageCount: 0,
-                        timeRange: '',
-                        keywords: ['查手机', '冒充', '手机被动'],
-                        startTime: Date.now(),
-                        endTime: Date.now()
-                    });
-                    console.log('[acceptMessageReply] ✅ 查手机事件已写入长期记忆');
-                } catch (memErr) {
-                    console.warn('[acceptMessageReply] 写入查手机长期记忆失败:', memErr);
+                // ★ 将查手机事件写入长期记忆（仅首次有新标记时写入，避免重复）
+                if (markedCount > 0) {
+                    try {
+                        const smsUserName = smsUserChar ? smsUserChar.name : (myChar.nick || myChar.name);
+                        const fpMemoryContent = `${smsUserName}偷偷拿了${targetChar.name}的手机，做了以下事情：${_fpNpcLinesForMemorySms.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${targetChar.name}已经发现并做出了反应。`;
+                        await db.chat_summaries.add({
+                            accountId: accountId,
+                            chatType: 'private',
+                            chatId: String(targetChar.id),
+                            time: Date.now(),
+                            content: fpMemoryContent,
+                            messageCount: 0,
+                            timeRange: '',
+                            keywords: ['查手机', '冒充', '手机被动'],
+                            startTime: Date.now(),
+                            endTime: Date.now()
+                        });
+                        console.log('[acceptMessageReply] ✅ 查手机事件已写入长期记忆');
+                    } catch (memErr) {
+                        console.warn('[acceptMessageReply] 写入查手机长期记忆失败:', memErr);
+                    }
+                } else {
+                    console.log('[acceptMessageReply] ℹ️ 查手机活动已全部通知过，跳过重复写入长期记忆');
                 }
             } catch (fpErr) {
                 console.warn('[acceptMessageReply] 标记fpNotified失败:', fpErr);
@@ -22411,24 +23158,28 @@ ${char.foreign_lang_mode ? `【语言规则 - 最高优先级！每条消息必�
                             console.log('[triggerAutoChat] ✅ 查手机活动已标记为已通知，共标记', markedCount, '条');
                         }
                         
-                        // ★ 将查手机事件写入长期记忆，确保角色永久记住此事
-                        try {
-                            const fpMemoryContent = `${userName}偷偷拿了${char.name}的手机，做了以下事情：${_fpNpcLinesForMemoryAuto.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${char.name}已经发现并做出了反应。`;
-                            await db.chat_summaries.add({
-                                accountId: accountId,
-                                chatType: 'private',
-                                chatId: String(char.id),
-                                time: Date.now(),
-                                content: fpMemoryContent,
-                                messageCount: 0,
-                                timeRange: '',
-                                keywords: ['查手机', '冒充', '手机被动'],
-                                startTime: Date.now(),
-                                endTime: Date.now()
-                            });
-                            console.log('[triggerAutoChat] ✅ 查手机事件已写入长期记忆');
-                        } catch (memErr) {
-                            console.warn('[triggerAutoChat] 写入查手机长期记忆失败:', memErr);
+                        // ★ 将查手机事件写入长期记忆（仅首次有新标记时写入，避免重复）
+                        if (markedCount > 0) {
+                            try {
+                                const fpMemoryContent = `${userName}偷偷拿了${char.name}的手机，做了以下事情：${_fpNpcLinesForMemoryAuto.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${char.name}已经发现并做出了反应。`;
+                                await db.chat_summaries.add({
+                                    accountId: accountId,
+                                    chatType: 'private',
+                                    chatId: String(char.id),
+                                    time: Date.now(),
+                                    content: fpMemoryContent,
+                                    messageCount: 0,
+                                    timeRange: '',
+                                    keywords: ['查手机', '冒充', '手机被动'],
+                                    startTime: Date.now(),
+                                    endTime: Date.now()
+                                });
+                                console.log('[triggerAutoChat] ✅ 查手机事件已写入长期记忆');
+                            } catch (memErr) {
+                                console.warn('[triggerAutoChat] 写入查手机长期记忆失败:', memErr);
+                            }
+                        } else {
+                            console.log('[triggerAutoChat] ℹ️ 查手机活动已全部通知过，跳过重复写入长期记忆');
                         }
                     } catch (fpErr) {
                         console.warn('[triggerAutoChat] 标记fpNotified失败:', fpErr);
@@ -22583,7 +23334,7 @@ ${char.foreign_lang_mode ? `【语言规则 - 最高优先级！每条消息必�
                 try {
                     const history = getChatHistory(char, accountId);
                     if (history && history.length > 0) {
-                        const recent = history.slice(-5).map(m => {
+                        const recent = history.slice(-20).map(m => {
                             const role = m.role === 'char' ? char.name : userName;
                             return `${role}: ${m.content}`;
                         }).join('\n');
@@ -29074,7 +29825,7 @@ messages:
         }
 
         async function triggerAiReply(additionalSystemInfo = null) {
-            console.log('[triggerAiReply] ⚡ 触发 AI 回复');
+            console.log('[triggerAiReply] ⚡ 触发 AI 回复', window._isRegenerateMode ? '(重回模式)' : '');
             
             // 🔧 防止重复调用API（超时15秒自动解锁，防止手机端锁死）
             if (window._isGeneratingReply) {
@@ -29082,6 +29833,7 @@ messages:
                 if (elapsed < 15000) { // 15秒内认为是正常生成中
                     console.log('[triggerAiReply] 正在生成回复中，忽略重复调用 (已等待' + Math.round(elapsed/1000) + '秒)');
                     showToast('正在生成回复中，请稍候...');
+                    window._isRegenerateMode = false; // 清除重回标记
                     return;
                 }
                 // 超过15秒，强制重置锁（防止手机端卡死）
@@ -29094,6 +29846,7 @@ messages:
             
             // ★ 查手机NPC模式：NPC视角回复（NPC以为是角色在发消息）
             if (window._fpChatMode && window._fpAccountId && String(window._fpAccountId).startsWith('fp_npc_')) {
+                window._isRegenerateMode = false; // 清除重回标记
                 await triggerFpNpcReply();
                 return;
             }
@@ -30222,12 +30975,34 @@ ${togetherListenInfo.isPlaying ? '正在播放中...' : '已暂停'}
                 if (messages.length > 1) {
                     const lastMsg = messages[messages.length - 1];
                     if (lastMsg.role === 'assistant') {
-                        console.log('[triggerAiReply] ⚠️ 最后一条是角色消息，添加触发消息');
+                        // ★ 区分"重回"模式和"主动聊天/继续"模式
+                        if (window._isRegenerateMode) {
+                            console.log('[triggerAiReply] 🔄 重回模式：重新生成上一条回复');
+                            messages.push({
+                                role: 'user',
+                                content: `[系统指令] 用户对你上一条回复不满意，请你作为${char.name}重新回复。不要重复之前的回复内容，尝试不同的回答方式、语气或角度。回复的对象是之前的对话内容，按照设定的回复条数（${char.reply_min_count || 1}-${char.reply_max_count || 3}条）来回复。`
+                            });
+                        } else {
+                            console.log('[triggerAiReply] ⚠️ 最后一条是角色消息，添加触发消息');
+                            messages.push({
+                                role: 'user',
+                                content: `[系统指令] 对方没有回复，请你作为${char.name}继续这个话题，自然地接着聊。可以是：追问、补充、分享新想法、或者换个相关话题。按照设定的回复条数（${char.reply_min_count || 1}-${char.reply_max_count || 3}条）来回复。`
+                            });
+                        }
+                    }
+                }
+                
+                // ★ 重回模式下：即使最后一条是用户消息，也注入重新生成提示
+                if (window._isRegenerateMode && messages.length > 1) {
+                    const lastMsg = messages[messages.length - 1];
+                    if (lastMsg.role === 'user' && !lastMsg.content?.includes('[系统指令]')) {
                         messages.push({
-                            role: 'user',
-                            content: `[系统指令] 对方没有回复，请你作为${char.name}继续这个话题，自然地接着聊。可以是：追问、补充、分享新想法、或者换个相关话题。按照设定的回复条数（${char.reply_min_count || 1}-${char.reply_max_count || 3}条）来回复。`
+                            role: 'system',
+                            content: `提醒：用户对你之前的回复不满意，请重新回复。不要重复之前的内容，尝试不同的回答方式和角度。`
                         });
                     }
+                    // 清除重回标记
+                    window._isRegenerateMode = false;
                 }
                 
                 // ★ 如果有查手机活动，在消息末尾追加一条系统提醒，确保AI注意到
@@ -32445,28 +33220,33 @@ ${checkResult.checkResult}
                             if (freshCharForFp.fp_moments_by_user) {
                                 fpUpdatePayload.fp_moments_by_user = freshCharForFp.fp_moments_by_user;
                             }
-                            await db.characters.update(targetCharId, fpUpdatePayload);
-                            console.log('[triggerAiReply] ✅ 查手机活动已标记为已通知，共标记', markedCount, '条');
-                        }
-                        
-                        // ★ 将查手机事件写入长期记忆，确保角色永久记住此事
-                        try {
-                            const fpMemoryContent = `${userName}偷偷拿了${char.name}的手机，做了以下事情：${_fpNpcLinesForMemory.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${char.name}已经发现并做出了反应。`;
-                            await db.chat_summaries.add({
-                                accountId: accountId,
-                                chatType: 'private',
-                                chatId: String(targetCharId),
-                                time: Date.now(),
-                                content: fpMemoryContent,
-                                messageCount: 0,
-                                timeRange: '',
-                                keywords: ['查手机', '冒充', '手机被动'],
-                                startTime: Date.now(),
-                                endTime: Date.now()
-                            });
-                            console.log('[triggerAiReply] ✅ 查手机事件已写入长期记忆');
-                        } catch (memErr) {
-                            console.warn('[triggerAiReply] 写入查手机长期记忆失败:', memErr);
+                            // 🔧 只有真正有新标记的消息时才更新DB和写入记忆
+                            if (markedCount > 0) {
+                                await db.characters.update(targetCharId, fpUpdatePayload);
+                                console.log('[triggerAiReply] ✅ 查手机活动已标记为已通知，共标记', markedCount, '条');
+                            
+                                // ★ 将查手机事件写入长期记忆，确保角色永久记住此事（仅首次通知时写入）
+                                try {
+                                    const fpMemoryContent = `${userName}偷偷拿了${char.name}的手机，做了以下事情：${_fpNpcLinesForMemory.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${char.name}已经发现并做出了反应。`;
+                                    await db.chat_summaries.add({
+                                        accountId: accountId,
+                                        chatType: 'private',
+                                        chatId: String(targetCharId),
+                                        time: Date.now(),
+                                        content: fpMemoryContent,
+                                        messageCount: 0,
+                                        timeRange: '',
+                                        keywords: ['查手机', '冒充', '手机被动'],
+                                        startTime: Date.now(),
+                                        endTime: Date.now()
+                                    });
+                                    console.log('[triggerAiReply] ✅ 查手机事件已写入长期记忆');
+                                } catch (memErr) {
+                                    console.warn('[triggerAiReply] 写入查手机长期记忆失败:', memErr);
+                                }
+                            } else {
+                                console.log('[triggerAiReply] ℹ️ 查手机活动已全部通知过，跳过重复写入长期记忆');
+                            }
                         }
                     } catch (fpErr) {
                         console.warn('[triggerAiReply] 标记fpNotified失败:', fpErr);
@@ -32492,6 +33272,8 @@ ${checkResult.checkResult}
                 // 🔧 无论成功还是失败，都要释放锁，允许下次调用
                 window._isGeneratingReply = false;
                 window._isGeneratingReplyTime = 0;
+                // 🔄 清除重回标记
+                window._isRegenerateMode = false;
                 // 🔧 释放角色级共享锁
                 autoChatLocks.delete(targetCharId);
                 if (window._autoChatLockTimes) delete window._autoChatLockTimes[targetCharId];
@@ -32577,6 +33359,7 @@ ${checkResult.checkResult}
             closeChatPanel();
             
             // 重新生成回复（基于删除后的历史记录，用户消息还在）
+            window._isRegenerateMode = true;
             await triggerAiReply();
         }
         
@@ -32665,6 +33448,7 @@ ${checkResult.checkResult}
             closeChatPanel();
             
             // 重新生成群聊回复
+            window._isRegenerateMode = true;
             await triggerAiReply();
         }
 
@@ -35241,6 +36025,159 @@ function showLorebookPage() {
         document.getElementById('custom-css-input').value = '';
         applyCustomCSS();
         if (typeof showToast === 'function') showToast('已清空自定义CSS');
+    }
+
+    /**
+     * 保存当前全局自定义CSS为预设
+     * 将textarea中的CSS代码以命名预设的方式持久化到IndexedDB
+     */
+    async function saveGlobalCSSPreset() {
+        const cssCode = document.getElementById('custom-css-input')?.value?.trim();
+        if (!cssCode) {
+            showToast('当前没有CSS代码可保存');
+            return;
+        }
+
+        const presetName = prompt('请输入预设名称：');
+        if (!presetName || !presetName.trim()) return;
+
+        try {
+            const existing = await db.dexiData.get('globalCSSPresets');
+            const presets = existing ? existing.value : [];
+
+            // 检查是否重名
+            if (presets.find(p => p.name === presetName.trim())) {
+                if (!confirm(`预设"${presetName.trim()}"已存在，是否覆盖？`)) return;
+                const idx = presets.findIndex(p => p.name === presetName.trim());
+                if (idx !== -1) presets.splice(idx, 1);
+            }
+
+            presets.push({
+                name: presetName.trim(),
+                cssCode: cssCode,
+                time: Date.now()
+            });
+
+            await db.dexiData.put({ key: 'globalCSSPresets', value: presets });
+            showToast(`CSS预设"${presetName.trim()}"已保存！`);
+        } catch (e) {
+            console.error('[全局CSS] 保存预设失败:', e);
+            showToast('保存预设失败');
+        }
+    }
+
+    /**
+     * 加载全局CSS预设列表
+     * 从IndexedDB读取已保存的CSS预设并展示为可操作列表
+     */
+    async function loadGlobalCSSPreset() {
+        try {
+            const existing = await db.dexiData.get('globalCSSPresets');
+            const presets = existing ? existing.value : [];
+
+            if (presets.length === 0) {
+                showToast('暂无保存的CSS预设');
+                return;
+            }
+
+            const listEl = document.getElementById('global-css-preset-list');
+            if (!listEl) return;
+
+            // 切换显示/隐藏
+            if (listEl.style.display !== 'none' && listEl.innerHTML !== '') {
+                listEl.style.display = 'none';
+                return;
+            }
+
+            let html = '';
+            for (let i = 0; i < presets.length; i++) {
+                const p = presets[i];
+                const timeStr = p.time ? new Date(p.time).toLocaleDateString() : '';
+                const preview = (p.cssCode || '').substring(0, 50).replace(/</g, '&lt;') + (p.cssCode?.length > 50 ? '...' : '');
+
+                html += `
+                    <div style="display:flex; align-items:center; padding:10px 12px; background:#fff; border:1px solid #e8e8e8; border-radius:10px; margin-bottom:8px;">
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:13px; font-weight:500; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.name}</div>
+                            <div style="font-size:10px; color:#aaa; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${preview} ${timeStr ? '· ' + timeStr : ''}</div>
+                        </div>
+                        <div style="display:flex; gap:6px; flex-shrink:0; margin-left:8px;">
+                            <div onclick="applyGlobalCSSPreset(${i})" style="padding:5px 12px; font-size:11px; background:#007aff; color:#fff; border-radius:6px; cursor:pointer; font-weight:500;">应用</div>
+                            <div onclick="deleteGlobalCSSPreset(${i})" style="padding:5px 10px; font-size:11px; background:#f5f5f5; color:#ff3b30; border-radius:6px; cursor:pointer;">删除</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            listEl.innerHTML = html;
+            listEl.style.display = 'block';
+        } catch (e) {
+            console.error('[全局CSS] 加载预设失败:', e);
+            showToast('加载预设失败');
+        }
+    }
+
+    /**
+     * 应用指定的全局CSS预设
+     * 将预设中的CSS代码回填到textarea并立即生效
+     */
+    async function applyGlobalCSSPreset(index) {
+        try {
+            const existing = await db.dexiData.get('globalCSSPresets');
+            const presets = existing ? existing.value : [];
+            if (index < 0 || index >= presets.length) return;
+
+            const p = presets[index];
+            const cssInput = document.getElementById('custom-css-input');
+            if (cssInput) {
+                cssInput.value = p.cssCode || '';
+            }
+
+            // 立即应用CSS
+            applyCustomCSS();
+
+            showToast(`已应用CSS预设"${p.name}"`);
+
+            // 隐藏预设列表
+            const listEl = document.getElementById('global-css-preset-list');
+            if (listEl) listEl.style.display = 'none';
+        } catch (e) {
+            console.error('[全局CSS] 应用预设失败:', e);
+            showToast('应用预设失败');
+        }
+    }
+
+    /**
+     * 删除指定的全局CSS预设
+     * 从IndexedDB中移除并刷新预设列表
+     */
+    async function deleteGlobalCSSPreset(index) {
+        try {
+            const existing = await db.dexiData.get('globalCSSPresets');
+            const presets = existing ? existing.value : [];
+            if (index < 0 || index >= presets.length) return;
+
+            const name = presets[index].name;
+            if (!confirm(`确定要删除CSS预设"${name}"吗？`)) return;
+
+            presets.splice(index, 1);
+            await db.dexiData.put({ key: 'globalCSSPresets', value: presets });
+
+            showToast(`已删除CSS预设"${name}"`);
+
+            // 刷新列表
+            const listEl = document.getElementById('global-css-preset-list');
+            if (listEl) {
+                listEl.style.display = 'none';
+                listEl.innerHTML = '';
+            }
+            if (presets.length > 0) {
+                loadGlobalCSSPreset();
+            }
+        } catch (e) {
+            console.error('[全局CSS] 删除预设失败:', e);
+            showToast('删除预设失败');
+        }
     }
 
     /**
@@ -39470,6 +40407,30 @@ async function generateReplyToUserComment(momentId, charName, userComment) {
         
         if (!targetChar) return;
         
+        // 获取用户与角色的关系上下文
+        let relationContext = '';
+        try {
+            if (myChar) {
+                relationContext += `\n【${myName}（回复你的人）的信息】\n`;
+                relationContext += `名字：${myName}\n`;
+                if (myChar.description) relationContext += `设定：${myChar.description}\n`;
+            }
+            if (targetChar.remark) {
+                relationContext += `${targetChar.name} 对 ${myName} 的备注/称呼：${targetChar.remark}\n`;
+            }
+            // 最近聊天记录
+            const history = getChatHistory(targetChar, accountId);
+            if (history && history.length > 0) {
+                const recent = history.slice(-10).map(m => {
+                    const role = m.role === 'char' ? targetChar.name : myName;
+                    return `${role}: ${m.content}`;
+                }).join('\n');
+                relationContext += `\n【${targetChar.name}与${myName}的最近聊天】\n${recent}\n`;
+            }
+        } catch (e) {
+            console.warn('[朋友圈回复] 获取关系上下文失败:', e);
+        }
+        
         // 找到角色之前在这条朋友圈下的评论
         const charPrevComments = (moment.comments || [])
             .filter(c => {
@@ -39480,9 +40441,11 @@ async function generateReplyToUserComment(momentId, charName, userComment) {
             .join('；');
         
         const prompt = `你是 ${targetChar.name}，你在 ${myName} 的朋友圈下评论了："${charPrevComments}"
+${relationContext}
 ${myName} 回复了你："${userComment}"
 
 请以 ${targetChar.name} 的身份，用简短自然的语气再回复 ${myName}（3-20字，可以用表情、语气词）。
+注意：你和 ${myName} 是认识的，请根据你们的关系亲密程度来回复。
 
 人设参考：${targetChar.description || targetChar.personality || '普通朋友'}
 
@@ -39531,6 +40494,36 @@ async function generateMomentOwnerReply(momentId, userName, userComment) {
         const myChar = await db.characters.get(parseInt(currentMyCharId));
         const myName = myChar?.name || userName;
         
+        // 获取用户与角色的关系上下文
+        const accountId = getCurrentAccountId();
+        let relationContext = '';
+        try {
+            // 用户信息
+            if (myChar) {
+                relationContext += `\n【${myName}（评论者）的信息】\n`;
+                relationContext += `名字：${myName}\n`;
+                if (myChar.description) relationContext += `设定：${myChar.description}\n`;
+            }
+            // 角色备注（角色给用户的备注）
+            if (ownerChar.remark_by_user && ownerChar.remark_by_user[accountId]) {
+                relationContext += `${myName} 给 ${ownerChar.name} 的备注：${ownerChar.remark_by_user[accountId]}\n`;
+            }
+            if (ownerChar.remark) {
+                relationContext += `${ownerChar.name} 对 ${myName} 的备注/称呼：${ownerChar.remark}\n`;
+            }
+            // 最近聊天记录
+            const history = getChatHistory(ownerChar, accountId);
+            if (history && history.length > 0) {
+                const recent = history.slice(-10).map(m => {
+                    const role = m.role === 'char' ? ownerChar.name : myName;
+                    return `${role}: ${m.content}`;
+                }).join('\n');
+                relationContext += `\n【${ownerChar.name}与${myName}的最近聊天】\n${recent}\n`;
+            }
+        } catch (e) {
+            console.warn('[朋友圈回复] 获取关系上下文失败:', e);
+        }
+        
         // 获取已有的所有评论，用于上下文
         const existingComments = (moment.comments || []).map(c => {
             const replyPart = c.replyTo ? ` 回复 ${c.replyTo}` : '';
@@ -39538,13 +40531,14 @@ async function generateMomentOwnerReply(momentId, userName, userComment) {
         }).join('\n');
         
         const promptText = `你是 ${ownerChar.name}，你发了一条朋友圈："${moment.content}"
-
+${relationContext}
 ${existingComments ? `朋友圈下已有的评论：\n${existingComments}\n` : ''}
 ${myName} 评论了你的朋友圈："${userComment}"
 
 请以 ${ownerChar.name} 的身份回复 ${myName} 的评论。要求：
 - 简短自然（3-30字）
 - 符合你的性格和说话风格
+- 符合你和 ${myName} 之间的关系和亲密程度
 - 可以用表情、语气词
 - 像真人回复朋友圈评论一样随意
 
@@ -47994,7 +48988,9 @@ ${recentSummary}
     const maxWords = settings.maxWords || 500;
     const customPreset = settings.customPreset || '';
     
-    // 构建系统提示词
+    // 线上聊天记录将在消息数组中以时间线方式合并（不再作为摘要）
+    
+        // 构建系统提示词
     const systemPrompt = `# 角色指令 (System Instruction) - 线下模式
 你现在的身份是【${friendName}】，正在与【${myName}】进行**线下真实见面**。
 ⚠️ 重要：你的名字是${friendName}，你不是${myName}！你是独立的角色，有自己的性格和想法。
@@ -48011,9 +49007,10 @@ ${char.relationships && char.relationships.length > 0 ? `
 3. **关联角色/NPC**：
 ${char.relationships.map(r => `   - ${r.targetName}（${r.relation}）${r.desc ? '：' + r.desc : ''}`).join('\n')}` : ''}
 ${loreContext ? `\n## 📖 世界书设定\n${loreContext}` : ''}
-${summaryMemoryContext}
+${summaryMemoryContext || ''}
 ${groupMemoryContext || ''}
 ${momentsContextText || ''}
+
 ${antiRepeatContext || ''}
 
 ## 🎭 行为准则 (Action Rules)
@@ -48047,25 +49044,29 @@ ${antiRepeatContext || ''}
    **错误示例（不要这样，所有内容堆在一起）：**
    ${friendName}微笑着走到${myName}身边，轻轻拍了拍他的肩膀。"你今天看起来心情不错呢。"她眨了眨眼，眼神中带着一丝调皮。
    
-   **重要：回复中必须包含换行符（\\n），让内容分段显示，不要所有文字堆在一起！**
+   **重要：回复中必须包含换行符（\n），让内容分段显示，不要所有文字堆在一起！**
+9. **【⚠️ 绝对禁止输出前缀标记】**：
+   - 回复中**严禁**出现任何方括号前缀，如 [微信消息]、[线下]、[旁白] 等
+   - 直接输出角色的动作描写和对话内容，不要添加任何元标记
 
-${normalChatHistory.length > 0 ? `## ★ 线上线下统一世界观
-注意：你和对方的互动包含【微信聊天】和【线下见面】两个场景，它们是同一段关系。
-- 带有 [微信消息] 前缀的消息是你们在微信上的聊天
-- 没有前缀的消息是线下见面时的互动
+${normalChatHistory.length > 0 ? `
+## ★ 线上线下统一世界观
+你和对方的互动包含【微信聊天】和【线下见面】两个场景，它们发生在同一段关系中，时间线是连贯的。
+- 对话记录中会出现"（之后你们在微信上聊天）"或"（之后你们线下见面了）"这样的场景切换提示
+- 这些提示仅供你理解上下文，你的回复中绝对不要出现这类提示
 - 你的记忆是完整的，不管是微信聊天还是线下见面的事你都清楚记得
-- 请根据最近的对话内容自然地回复，不要割裂线上线下的关系` : ''}
+- 请根据最近的对话内容自然地回复，不要割裂线上线下的关系
+- 当前场景是【线下见面】，请以线下互动的方式回复` : ''}
 ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
 
     // ★ 线上线下统一时间线：合并微信聊天和线下对话，按时间排序
+    // 🔧 场景切换时在 user 消息中自然嵌入提示，不使用任何前缀标记
     const contextCount = char.context_message_count || 20;
     
-    // 🔧 修复空回复：对线上消息做与 triggerAiReply 相同的清洗处理
+    // 处理线上消息（与 triggerAiReply 相同的清洗逻辑）
     const onlineMsgs = normalChatHistory
         .filter(h => {
-            // 过滤掉系统事件消息（戳一戳、打开APP、改昵称等），它们不是对话内容
             if (h.role === 'system') return false;
-            // 过滤掉视频通话消息
             if (h.isVideoCall) return false;
             return true;
         })
@@ -48073,7 +49074,7 @@ ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
             const role = h.role === 'user' ? 'user' : 'assistant';
             let content = (h.content || '').trim();
             
-            // 转账消息 → 转为可读文字
+            // 转账消息
             if (h.type === 'transfer') {
                 try {
                     const td = JSON.parse(content);
@@ -48082,20 +49083,12 @@ ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
                     content = role === 'user' 
                         ? `对方给你转账了 ¥${td.amount}，备注：${td.desc || '转账'}${sLabel ? '，' + sLabel : ''}`
                         : `你给对方转账了 ¥${td.amount}，备注：${td.desc || '转账'}${sLabel ? '，' + sLabel : ''}`;
-                } catch(e) {
-                    content = '一笔转账';
-                }
+                } catch(e) { content = '一笔转账'; }
             }
-            // 位置分享消息
             else if (h.type === 'location') {
-                try {
-                    const ld = JSON.parse(content);
-                    content = `分享了位置：${ld.name || '某地点'}`;
-                } catch(e) {
-                    content = '分享了一个位置';
-                }
+                try { const ld = JSON.parse(content); content = `分享了位置：${ld.name || '某地点'}`; }
+                catch(e) { content = '分享了一个位置'; }
             }
-            // 特殊卡片消息
             else if (content.startsWith('[couple_avatar_card]')) {
                 content = role === 'assistant' ? '发送了情头邀请' : '回应了情头邀请';
             } else if (content.startsWith('[emei_order]') || content.startsWith('[emei_share]')) {
@@ -48106,71 +49099,101 @@ ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
                 try {
                     const sd = JSON.parse(content);
                     content = sd.isGift ? `送了一个购物礼物：${sd.items}` : `发送了购物订单：${sd.items}`;
-                } catch(e) {
-                    content = '发送了购物卡片';
-                }
+                } catch(e) { content = '发送了购物卡片'; }
             }
-            // 撤回消息
             else if (h.type === 'recall' || content === '((RECALL))') {
                 content = '撤回了一条消息';
             }
             
-            // 图片/语音/表情替换
             content = content
                 .replace(/\[img:[^\]]*\]/g, '[图片]')
                 .replace(/\[imgcard:[^\]]*\]/g, '[图片]')
                 .replace(/\[voice:[^\]]*\]/g, '[语音]')
                 .replace(/\[sticker:[^\]]*\]/g, '[表情]');
             
-            return {
-                role: role,
-                content: content,
-                time: h.time || 0,
-                _isOnline: true
-            };
+            return { role, content, time: h.time || 0, _isOnline: true };
         })
-        .filter(h => h.content && h.content.trim()); // 过滤空内容消息
-        
-    const offlineMsgs = offlineModeHistory.map(h => ({
-        role: h.role === 'user' ? 'user' : 'assistant',
-        content: h.content || '',
-        time: h.time || 0,
-        _isOnline: false
-    })).filter(h => h.content && h.content.trim()); // 过滤空内容消息
+        .filter(h => h.content && h.content.trim());
     
-    // 线上线下合并后按时间排序，统一取最近 contextCount 条（与上下文条数设置一致）
+    const offlineMsgs = offlineModeHistory
+        .filter(h => h.content && h.content.trim())
+        .map(h => ({
+            role: h.role === 'user' ? 'user' : 'assistant',
+            content: h.content,
+            time: h.time || 0,
+            _isOnline: false
+        }));
+    
+    // 合并后按时间排序，取最近 contextCount 条
     const mergedTimeline = [...onlineMsgs, ...offlineMsgs]
         .sort((a, b) => (a.time || 0) - (b.time || 0))
         .slice(-contextCount);
     
-    // 🔧 修复空回复：合并连续同角色消息，避免某些API不支持连续相同role导致返回空
-    const mergedMessages = [];
-    for (const msg of mergedTimeline) {
-        const prefix = msg._isOnline ? '[微信消息] ' : '';
-        const contentWithPrefix = prefix + msg.content;
+    // 🔧 场景切换提示：当 online↔offline 切换时，在第一条 user 消息中嵌入自然过渡
+    // 不使用任何前缀标记，而是把过渡文字合并到 user 消息的开头
+    let lastMode = null; // null | 'online' | 'offline'
+    const timelineWithTransitions = [];
+    
+    for (let i = 0; i < mergedTimeline.length; i++) {
+        const msg = mergedTimeline[i];
+        const currentMode = msg._isOnline ? 'online' : 'offline';
         
+        // 检测场景切换
+        if (lastMode !== null && currentMode !== lastMode) {
+            // 场景变了，找到切换后第一条 user 消息并嵌入过渡提示
+            if (msg.role === 'user') {
+                const transition = currentMode === 'online' 
+                    ? '（之后你们在微信上聊天）\n'
+                    : '（之后你们线下见面了）\n';
+                timelineWithTransitions.push({
+                    role: msg.role,
+                    content: transition + msg.content,
+                    _isOnline: msg._isOnline
+                });
+            } else {
+                // 如果切换后第一条是 assistant，则插入一条过渡 user 消息
+                const transition = currentMode === 'online'
+                    ? '（之后你们切换到微信聊天了）'
+                    : '（之后你们线下又碰面了）';
+                timelineWithTransitions.push({
+                    role: 'user',
+                    content: transition,
+                    _isOnline: msg._isOnline
+                });
+                timelineWithTransitions.push({
+                    role: msg.role,
+                    content: msg.content,
+                    _isOnline: msg._isOnline
+                });
+            }
+        } else {
+            timelineWithTransitions.push({
+                role: msg.role,
+                content: msg.content,
+                _isOnline: msg._isOnline
+            });
+        }
+        lastMode = currentMode;
+    }
+    
+    // 合并连续同角色消息
+    const mergedMessages = [];
+    for (const msg of timelineWithTransitions) {
         const prev = mergedMessages[mergedMessages.length - 1];
         if (prev && prev.role === msg.role) {
-            // 合并连续同角色消息：追加到上一条
-            prev.content += '\n' + contentWithPrefix;
+            prev.content += '\n' + msg.content;
         } else {
-            mergedMessages.push({
-                role: msg.role,
-                content: contentWithPrefix
-            });
+            mergedMessages.push({ role: msg.role, content: msg.content });
         }
     }
     
-    // 构建消息数组（统一时间线）
+    // 构建消息数组
     const messages = [
         { role: 'system', content: systemPrompt },
-        ...mergedMessages.map(h => ({
-            role: h.role,
-            content: h.content
-        }))
+        ...mergedMessages
     ];
     
-    // 🔧 修复空回复：确保最后一条消息是 user，否则API会认为已回复完毕，返回空 choices
+    // 🔧 确保最后一条消息是 user
     if (messages.length > 1) {
         const lastMsg = messages[messages.length - 1];
         if (lastMsg.role === 'assistant') {
@@ -48182,7 +49205,7 @@ ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
         }
     }
     
-    // 🔧 修复空回复：确保至少有一条 user 消息
+    // 🔧 确保至少有一条 user 消息
     const hasUserMsg = messages.some(m => m.role === 'user');
     if (!hasUserMsg) {
         console.warn('[generateOfflineReply] ⚠️ 没有user消息，添加默认消息');
@@ -48192,7 +49215,7 @@ ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
         });
     }
     
-    console.log('[generateOfflineReply] 📤 发送消息数:', messages.length, '条');
+        console.log('[generateOfflineReply] 📤 发送消息数:', messages.length, '条');
     console.log('[generateOfflineReply] 消息角色序列:', messages.map(m => m.role).join(' → '));
 
     const reply = await callAI(messages);
@@ -48331,6 +49354,139 @@ function applyOfflineBubbleCSS() {
         document.head.appendChild(styleEl);
     }
     styleEl.textContent = cssCode;
+}
+
+
+// ===== 线下模式预设管理 =====
+// localStorage key: offline_presets_preset / offline_presets_bubblecss
+
+/**
+ * 获取指定类型的所有预设列表
+ * @param {string} type - 'preset' 或 'bubblecss'
+ */
+function getOfflinePresets(type) {
+    const key = 'offline_presets_' + type;
+    try {
+        const data = localStorage.getItem(key);
+        return data ? JSON.parse(data) : [];
+    } catch (e) { return []; }
+}
+
+/**
+ * 保存预设列表到 localStorage
+ */
+function setOfflinePresets(type, list) {
+    const key = 'offline_presets_' + type;
+    localStorage.setItem(key, JSON.stringify(list));
+}
+
+/**
+ * 将当前输入框的内容保存为预设
+ */
+function saveOfflinePresetAs(type) {
+    const textareaId = type === 'preset' ? 'offline-custom-preset' : 'offline-custom-bubble-css';
+    const content = document.getElementById(textareaId)?.value?.trim();
+    if (!content) {
+        showToast('内容为空，无法保存');
+        return;
+    }
+
+    const name = prompt('请为预设命名：');
+    if (!name || !name.trim()) return;
+
+    const presets = getOfflinePresets(type);
+    presets.push({
+        name: name.trim(),
+        content: content,
+        time: Date.now()
+    });
+    setOfflinePresets(type, presets);
+    showToast('预设已保存：' + name.trim());
+}
+
+/**
+ * 显示预设列表弹窗
+ */
+function showOfflinePresetList(type) {
+    const presets = getOfflinePresets(type);
+    const typeName = type === 'preset' ? '自定义预设' : '气泡CSS预设';
+
+    // 移除旧弹窗
+    let old = document.getElementById('offline-preset-modal');
+    if (old) old.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'offline-preset-modal';
+    modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10002; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);';
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+    let html = '<div style="width:90%; max-width:400px; max-height:80vh; background:#fff; border-radius:20px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,0.3);">';
+    html += '<div style="padding:16px 20px; border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; background:#f8f8f8;">';
+    html += '<div style="font-size:17px; font-weight:600; color:#333;">📂 ' + typeName + '</div>';
+    html += '<div onclick="document.getElementById(\'offline-preset-modal\').remove()" style="width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:20px; color:#999; border-radius:50%; background:#f0f0f0;">×</div>';
+    html += '</div>';
+    html += '<div style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px 16px;">';
+
+    if (presets.length === 0) {
+        html += '<div style="text-align:center; padding:40px 0; color:#999; font-size:14px;">暂无保存的预设<br><span style="font-size:12px; color:#ccc;">在输入框填写内容后点击「保存为预设」</span></div>';
+    } else {
+        for (let i = 0; i < presets.length; i++) {
+            const p = presets[i];
+            const timeStr = new Date(p.time).toLocaleDateString('zh-CN') + ' ' + new Date(p.time).toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+            const preview = p.content.length > 60 ? p.content.substring(0, 60) + '...' : p.content;
+            html += '<div style="background:#fafafa; border:1px solid #eee; border-radius:12px; padding:12px 14px; margin-bottom:10px;">';
+            html += '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">';
+            html += '<div style="font-size:14px; font-weight:600; color:#333; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + p.name.replace(/</g, '&lt;') + '</div>';
+            html += '<div style="font-size:11px; color:#bbb; flex-shrink:0; margin-left:8px;">' + timeStr + '</div>';
+            html += '</div>';
+            html += '<div style="font-size:12px; color:#888; line-height:1.4; margin-bottom:10px; word-break:break-all; white-space:pre-wrap; max-height:60px; overflow:hidden;">' + preview.replace(/</g, '&lt;') + '</div>';
+            html += '<div style="display:flex; gap:8px;">';
+            html += '<button onclick="loadOfflinePreset(\'' + type + '\',' + i + ')" style="flex:1; padding:7px; background:#e8f5e9; color:#43a047; border:none; border-radius:8px; font-size:12px; cursor:pointer; font-weight:500;">✓ 应用</button>';
+            html += '<button onclick="deleteOfflinePreset(\'' + type + '\',' + i + ')" style="padding:7px 12px; background:#fff0f0; color:#e57373; border:none; border-radius:8px; font-size:12px; cursor:pointer; font-weight:500;">删除</button>';
+            html += '</div>';
+            html += '</div>';
+        }
+    }
+
+    html += '</div></div>';
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+}
+
+/**
+ * 加载指定预设到输入框
+ */
+function loadOfflinePreset(type, index) {
+    const presets = getOfflinePresets(type);
+    const p = presets[index];
+    if (!p) return;
+
+    const textareaId = type === 'preset' ? 'offline-custom-preset' : 'offline-custom-bubble-css';
+    document.getElementById(textareaId).value = p.content;
+
+    // 关闭弹窗
+    const modal = document.getElementById('offline-preset-modal');
+    if (modal) modal.remove();
+
+    showToast('已加载预设：' + p.name);
+}
+
+/**
+ * 删除指定预设
+ */
+function deleteOfflinePreset(type, index) {
+    const presets = getOfflinePresets(type);
+    const p = presets[index];
+    if (!p) return;
+
+    if (!confirm('确定删除预设「' + p.name + '」吗？')) return;
+
+    presets.splice(index, 1);
+    setOfflinePresets(type, presets);
+
+    // 刷新弹窗
+    showOfflinePresetList(type);
+    showToast('已删除预设');
 }
 
 function clearOfflineChatHistory() {
@@ -57349,22 +58505,31 @@ function xianyuShowMyWallet() { alert('我的钱包功能待开发'); }
 function xianyuShowDataManagement() { xianyuShowSettingsDialog(); }
 
 async function xianyuExportData() {
-    const allData = {
-        goods: await xianyuDb.goods.toArray(),
-        collections: await xianyuDb.collections.toArray(),
-        messages: await xianyuDb.messages.toArray(),
-        users: await xianyuDb.users.toArray(),
-        orders: await xianyuDb.orders.toArray(),
-        exportDate: new Date().toISOString()
-    };
-    const dataStr = JSON.stringify(allData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    const exportFileDefaultName = 'xianyu_data.json';
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-    xianyuShowDataStatus('数据已导出');
+    try {
+        const allData = {
+            goods: await xianyuDb.goods.toArray(),
+            collections: await xianyuDb.collections.toArray(),
+            messages: await xianyuDb.messages.toArray(),
+            users: await xianyuDb.users.toArray(),
+            orders: await xianyuDb.orders.toArray(),
+            exportDate: new Date().toISOString()
+        };
+        const dataStr = JSON.stringify(allData, null, 2);
+        // 使用 Blob + URL.createObjectURL 替代 data URI，避免大数据量导致浏览器崩溃
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const linkElement = document.createElement('a');
+        linkElement.href = url;
+        linkElement.download = 'xianyu_data.json';
+        document.body.appendChild(linkElement);
+        linkElement.click();
+        document.body.removeChild(linkElement);
+        URL.revokeObjectURL(url);
+        xianyuShowDataStatus('数据已导出');
+    } catch (error) {
+        console.error('闲鱼数据导出失败:', error);
+        alert('数据导出失败: ' + error.message);
+    }
 }
 
 function xianyuImportData() {
@@ -58801,7 +59966,8 @@ ${rolePersona}
 - 内容要有细节和画面感，比如具体吃了什么、看到了什么、和谁说了什么话
 - 可以有前后跳跃、想到哪写到哪的感觉，不需要严格的逻辑结构
 - 可以夹杂一些内心独白、自问自答
-- 字数在800-2000字左右，不要太短也不要刻意凑字数`;
+- 字数在800-2000字左右，不要太短也不要刻意凑字数
+- 【重要】不要在日记正文开头或任何位置写日期、时间、标题（如"2025年1月1日"、"周一"、"Day X"等），系统会自动添加日期，你只需要写日记内容本身`;
 
         // 构建 user prompt
         let userPromptParts = [];
