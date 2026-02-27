@@ -20,26 +20,21 @@
         html {
             width: 100%;
             height: 100%;
-            height: 100vh;
-            height: 100dvh; /* iOS PWA 必须使用 dvh 撑满屏幕，否则会在底部留出地址栏大小的白块 */
             margin: 0;
             padding: 0;
             overflow: hidden;
             -webkit-text-size-adjust: 100%;
             -moz-text-size-adjust: 100%;
             text-size-adjust: 100%;
-            background-color: #000; /* 防止底部安全区出现白边 */
+            background-color: #000;
         }
         body {
             width: 100%;
             height: 100%;
-            min-height: 100vh;
-            min-height: -webkit-fill-available;
-            height: 100dvh;
+            min-height: 100vh; /* 🔧 确保 body 背景覆盖整个 viewport（含 iOS safe area） */
             margin: 0;
             padding: 0;
             overflow: hidden;
-            /* 🔧 阻止安卓系统字体缩放影响页面布局（防止按钮/UI元素因系统大字体而溢出屏幕） */
             -webkit-text-size-adjust: 100%;
             -moz-text-size-adjust: 100%;
             text-size-adjust: 100%;
@@ -64,45 +59,15 @@ body {
     background-repeat: no-repeat;
 }
 .phone {
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh; /* 现代浏览器：动态视口高度，自动排除地址栏/底部工具栏 */
-    overflow: hidden;
+    width: 100%;
+    height: 100%;
     position: relative;
-    padding: 0 8px;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-}
-
-/* PWA 全屏模式：用 fixed + inset 完全撑满，避免 100vh 为地址栏预留空间 */
-@media (display-mode: standalone) {
-    .phone {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        width: 100vw !important;
-        height: auto !important; /* 让 top/bottom 决定高度，不依赖 vh */
-        margin: 0 !important;
-        padding: 0 8px !important; /* 保持原有的左右 padding */
-    }
-}
-
-/* iOS PWA 模式（navigator.standalone） */
-@supports (-webkit-touch-callout: none) {
-    body.standalone-mode .phone {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        width: 100vw !important;
-        height: auto !important;
-        margin: 0 !important;
-        padding: 0 8px !important;
-    }
+    padding: 0 8px;
+    margin: 0;
 }
 
 /* PWA 模式下，所有 position:fixed 的全屏页面也要用 inset:0 而不是 height:100% */
@@ -450,9 +415,10 @@ body.standalone-mode .chat-detail-page {
             align-items: center;
             z-index: 20;
             flex-shrink: 0;
-            margin: 0 auto 20px;
+            /* 🔧 用 env(safe-area-inset-bottom) 动态避开 iOS 底部小白条 */
+            margin: 0 auto env(safe-area-inset-bottom, 0px);
             align-self: center;
-            overflow: hidden; /* 🔧 防止安卓大字体撑出 */
+            overflow: hidden;
         }
         .dock-icon .icon {
             width: 56px;
@@ -2594,18 +2560,14 @@ body.standalone-mode .chat-detail-page {
     transition: padding-bottom 0.15s ease;
 }
 
-/* =========================================================================
-   🔧 修复 iOS PWA 模式键盘遮挡问题
-   当键盘弹起时，去掉所有安全区域 padding，依靠 JS 计算的视口高度对齐底部。
-   不再固定 34px，以防止在系统视口计算正确时出现白色空隙！
-   ========================================================================= */
-.keyboard-up .chat-footer,
-.keyboard-up .chat-input-bar,
-.keyboard-up .wechat-tabbar,
-body.standalone-mode .keyboard-up .chat-footer,
-body.standalone-mode .keyboard-up .chat-input-bar,
-body.standalone-mode .keyboard-up .wechat-tabbar {
+/* 键盘弹起时去掉安全区域 padding（Home指示条已被键盘遮住，不需要留空） */
+.keyboard-up .chat-footer {
     padding-bottom: 0 !important;
+}
+
+/* 🔧 修复 iOS PWA 模式下键盘上方的操作栏（Accessory Bar）遮挡输入框的 Bug */
+body.standalone-mode .keyboard-up .chat-footer {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 10px) !important;
 }
         
         /* 线下模式输入框区域 - 与线上私聊页面保持一致 */
@@ -2975,6 +2937,11 @@ body.standalone-mode .keyboard-up .wechat-tabbar {
             background: var(--ins-pink-light); /* 自己浅粉 */
             color: #000;
             border-bottom-right-radius: 4px; /* 小尾巴效果 */
+        }
+        /* 移除原来的三角形尾巴 */
+        .message-row.other .message-content::before,
+        .message-row.self .message-content::after {
+            display: none;
         }
         
         /* ========== 仿微信气泡样式 ========== */
