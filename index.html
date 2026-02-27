@@ -247,6 +247,7 @@
             <div class="save-btn" onclick="saveAllSetting()">保存设置</div>
         </div>
 
+        <div class="custom-page-body">
         <!-- 折叠项1：桌面设置（合并壁纸/图标/小组件/拍立得/头像/倒数日/颜色） -->
         <div class="custom-item" onclick="toggleExpand('expand1')">
             <div class="custom-item-text">桌面设置</div>
@@ -472,6 +473,11 @@
                 </div>
                 <div class="custom-item" onclick="clearCustomCSS()" style="flex:1; background:#fff0f0; justify-content:center;">
                     <div class="custom-item-text" style="color:#e57373; text-align:center;">↺ 清空CSS</div>
+                </div>
+            </div>
+            <div style="margin-top:8px;">
+                <div class="custom-item" onclick="showCSSClassReference()" style="background:#f0f4ff; justify-content:center;">
+                    <div class="custom-item-text" style="text-align:center; color:#5b7ddb;">📋 查看类名参考</div>
                 </div>
             </div>
             <div class="custom-edit-tip" style="margin-top:8px; font-size:11px; color:#bbb; line-height:1.5;">
@@ -724,6 +730,7 @@
                 导出文件为 JSON 格式。含图片链接的装修包体积较小，含本地上传图片（base64）的装修包体积会较大。
             </div>
         </div>
+        </div><!-- .custom-page-body end -->
     </div>
 
     <!-- 系统设置页面 -->
