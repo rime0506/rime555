@@ -60762,26 +60762,29 @@ async function saveChatTheme() {
 
         const accountId = getCurrentAccountId() || 'offline';
 
+        // URL字段优先从导入保护数据中获取真实值
+        const isEditingImported = !!(window._editingImportedTheme && window._editingImportedTheme._isImported);
+
         const themeData = {
             name: themeName,
             accountId: accountId,
             time: Date.now(),
-            // 背景
-            chatBackground: document.getElementById('chat-theme-bg').value.trim(),
-            headerBg: document.getElementById('chat-theme-header-bg').value.trim(),
+            // 背景（导入主题使用保护的真实URL）
+            chatBackground: _getThemeUrlValue('chat-theme-bg'),
+            headerBg: _getThemeUrlValue('chat-theme-header-bg'),
             headerColor: document.getElementById('chat-theme-header-color').value,
             titleColor: document.getElementById('chat-theme-title-color').value,
-            footerBg: document.getElementById('chat-theme-footer-bg').value.trim(),
+            footerBg: _getThemeUrlValue('chat-theme-footer-bg'),
             footerColor: document.getElementById('chat-theme-footer-color').value,
-            // 顶栏按钮图标
-            iconBack: document.getElementById('chat-theme-icon-back').value.trim(),
-            iconOffline: document.getElementById('chat-theme-icon-offline').value.trim(),
-            iconDetail: document.getElementById('chat-theme-icon-detail').value.trim(),
-            // 底栏按钮图标
-            iconAi: document.getElementById('chat-theme-icon-ai').value.trim(),
-            iconEmoji: document.getElementById('chat-theme-icon-emoji').value.trim(),
-            iconMore: document.getElementById('chat-theme-icon-more').value.trim(),
-            iconSend: document.getElementById('chat-theme-icon-send').value.trim(),
+            // 顶栏按钮图标（导入主题使用保护的真实URL）
+            iconBack: _getThemeUrlValue('chat-theme-icon-back'),
+            iconOffline: _getThemeUrlValue('chat-theme-icon-offline'),
+            iconDetail: _getThemeUrlValue('chat-theme-icon-detail'),
+            // 底栏按钮图标（导入主题使用保护的真实URL）
+            iconAi: _getThemeUrlValue('chat-theme-icon-ai'),
+            iconEmoji: _getThemeUrlValue('chat-theme-icon-emoji'),
+            iconMore: _getThemeUrlValue('chat-theme-icon-more'),
+            iconSend: _getThemeUrlValue('chat-theme-icon-send'),
             // 图标大小
             iconBackSize: parseInt(document.getElementById('chat-theme-icon-back-size')?.value) || 24,
             iconOfflineSize: parseInt(document.getElementById('chat-theme-icon-offline-size')?.value) || 20,
@@ -60792,10 +60795,18 @@ async function saveChatTheme() {
             iconSendSize: parseInt(document.getElementById('chat-theme-icon-send-size')?.value) || 18
         };
 
+        // 如果编辑的是导入主题，保留isImported标记
+        if (isEditingImported) {
+            themeData.isImported = true;
+        }
+
         const themeId = await db.chat_themes.add(themeData);
         console.log('[ChatTheme] ✓ 主题已保存:', themeData);
 
         showToast('✅ 主题保存成功');
+
+        // 清除导入主题编辑保护状态（恢复URL输入框为可编辑）
+        _clearImportedThemeEditState();
 
         // 清空表单
         document.getElementById('chat-theme-name').value = '';
@@ -60857,7 +60868,7 @@ async function loadChatThemeList() {
             return `
             <div style="padding:12px; background:#f8f8f8; border-radius:8px; border:1px solid #e8e8e8;">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-                    <div style="font-size:15px; font-weight:600; color:#333;">${theme.name}</div>
+                    <div style="font-size:15px; font-weight:600; color:#333;">${theme.name}${theme.isImported ? ' <span style="font-size:10px; color:#fff; background:#ff9500; padding:1px 5px; border-radius:3px; margin-left:4px; vertical-align:middle;">导入</span>' : ''}</div>
                     <div style="display:flex; gap:6px;">
                         <div onclick="exportSingleChatTheme(${theme.id})" style="padding:4px 10px; background:#fff; border:1px solid #ddd; border-radius:6px; font-size:12px; color:#007aff; cursor:pointer;">导出</div>
                         <div onclick="editChatTheme(${theme.id})" style="padding:4px 10px; background:#fff; border:1px solid #ddd; border-radius:6px; font-size:12px; color:#666; cursor:pointer;">编辑</div>
@@ -60888,6 +60899,9 @@ async function editChatTheme(themeId) {
             showToast('❌ 主题不存在');
             return;
         }
+
+        // 先清除之前可能存在的导入保护状态
+        _clearImportedThemeEditState();
 
         // 填充表单 - 背景
         document.getElementById('chat-theme-name').value = theme.name;
@@ -60922,6 +60936,25 @@ async function editChatTheme(themeId) {
             if (label) label.textContent = f.v + 'px';
         });
 
+        // 如果是导入的主题，保护URL字段不可见但保留功能
+        if (theme.isImported) {
+            window._editingImportedTheme = { _isImported: true };
+            Object.entries(_IMPORTED_URL_FIELDS).forEach(([inputId, propName]) => {
+                const val = theme[propName] || '';
+                if (val) {
+                    // 存储真实URL到保护数据中
+                    window._editingImportedTheme[inputId] = val;
+                    const input = document.getElementById(inputId);
+                    if (input) {
+                        input.value = '🔒 已导入图片（受保护）';
+                        input.readOnly = true;
+                        input.style.color = '#999';
+                        input.style.background = '#f5f5f5';
+                    }
+                }
+            });
+        }
+
         // 更新预览
         previewChatTheme();
 
@@ -60933,7 +60966,9 @@ async function editChatTheme(themeId) {
         await db.chat_themes.delete(themeId);
         await loadChatThemeList();
 
-        showToast('📝 主题已加载到编辑器，修改后点击保存');
+        showToast(theme.isImported
+            ? '📝 导入主题已加载（图片链接受保护，可调整大小和颜色）'
+            : '📝 主题已加载到编辑器，修改后点击保存');
     } catch (error) {
         console.error('[ChatTheme] ✗ 编辑主题失败:', error);
         showToast('❌ 编辑失败: ' + error.message);
@@ -60956,21 +60991,22 @@ async function deleteChatTheme(themeId) {
 
 // 预览聊天主题 - 完全按照实际聊天页面结构
 function previewChatTheme() {
-    const chatBg = document.getElementById('chat-theme-bg')?.value?.trim() || '';
-    const headerBg = document.getElementById('chat-theme-header-bg')?.value?.trim() || '';
+    // URL字段优先从导入保护数据中获取真实值
+    const chatBg = _getThemeUrlValue('chat-theme-bg');
+    const headerBg = _getThemeUrlValue('chat-theme-header-bg');
     const headerColor = document.getElementById('chat-theme-header-color')?.value || '#ededed';
     const titleColor = document.getElementById('chat-theme-title-color')?.value || '#333333';
-    const footerBg = document.getElementById('chat-theme-footer-bg')?.value?.trim() || '';
+    const footerBg = _getThemeUrlValue('chat-theme-footer-bg');
     const footerColor = document.getElementById('chat-theme-footer-color')?.value || '#ffffff';
     
-    // 按钮图标URL
-    const iconBack = document.getElementById('chat-theme-icon-back')?.value?.trim() || '';
-    const iconOffline = document.getElementById('chat-theme-icon-offline')?.value?.trim() || '';
-    const iconDetail = document.getElementById('chat-theme-icon-detail')?.value?.trim() || '';
-    const iconAi = document.getElementById('chat-theme-icon-ai')?.value?.trim() || '';
-    const iconEmoji = document.getElementById('chat-theme-icon-emoji')?.value?.trim() || '';
-    const iconMore = document.getElementById('chat-theme-icon-more')?.value?.trim() || '';
-    const iconSend = document.getElementById('chat-theme-icon-send')?.value?.trim() || '';
+    // 按钮图标URL（优先从导入保护数据获取）
+    const iconBack = _getThemeUrlValue('chat-theme-icon-back');
+    const iconOffline = _getThemeUrlValue('chat-theme-icon-offline');
+    const iconDetail = _getThemeUrlValue('chat-theme-icon-detail');
+    const iconAi = _getThemeUrlValue('chat-theme-icon-ai');
+    const iconEmoji = _getThemeUrlValue('chat-theme-icon-emoji');
+    const iconMore = _getThemeUrlValue('chat-theme-icon-more');
+    const iconSend = _getThemeUrlValue('chat-theme-icon-send');
     
     // 按钮图标大小
     const sizeBack = parseInt(document.getElementById('chat-theme-icon-back-size')?.value) || 24;
@@ -61537,6 +61573,87 @@ window.updateGroupChatDetailThemeDisplay = updateGroupChatDetailThemeDisplay;
 
 // ========== 主题导出/导入 ==========
 
+// ===== 导入主题URL保护机制 =====
+// 导入主题URL字段映射（input ID → theme属性名）
+const _IMPORTED_URL_FIELDS = {
+    'chat-theme-bg': 'chatBackground',
+    'chat-theme-header-bg': 'headerBg',
+    'chat-theme-footer-bg': 'footerBg',
+    'chat-theme-icon-back': 'iconBack',
+    'chat-theme-icon-offline': 'iconOffline',
+    'chat-theme-icon-detail': 'iconDetail',
+    'chat-theme-icon-ai': 'iconAi',
+    'chat-theme-icon-emoji': 'iconEmoji',
+    'chat-theme-icon-more': 'iconMore',
+    'chat-theme-icon-send': 'iconSend'
+};
+
+/**
+ * 获取主题URL字段的真实值（优先从导入保护数据中获取）
+ * @param {string} inputId - 输入框的DOM ID
+ * @returns {string} 真实的URL值
+ */
+function _getThemeUrlValue(inputId) {
+    if (window._editingImportedTheme && window._editingImportedTheme[inputId]) {
+        return window._editingImportedTheme[inputId];
+    }
+    return document.getElementById(inputId)?.value?.trim() || '';
+}
+
+/**
+ * 清除导入主题编辑保护状态，恢复所有URL输入框的可编辑状态
+ */
+function _clearImportedThemeEditState() {
+    if (window._editingImportedTheme) {
+        Object.keys(_IMPORTED_URL_FIELDS).forEach(inputId => {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.readOnly = false;
+                input.style.color = '';
+                input.style.background = '';
+            }
+        });
+        window._editingImportedTheme = null;
+    }
+}
+
+// ===== 导出加密选择弹窗 =====
+/**
+ * 显示导出方式选择弹窗，让用户选择加密或明文导出
+ * @returns {Promise<'encrypted'|'plain'|null>} 用户选择结果，null表示取消
+ */
+function _showExportEncryptDialog() {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:99999;display:flex;align-items:center;justify-content:center;';
+
+        const dialog = document.createElement('div');
+        dialog.style.cssText = 'background:#fff;border-radius:14px;padding:24px 20px 16px;width:300px;max-width:85vw;box-shadow:0 8px 32px rgba(0,0,0,0.2);text-align:center;';
+        dialog.innerHTML = `
+            <div style="font-size:16px;font-weight:600;color:#333;margin-bottom:8px;">选择导出方式</div>
+            <div style="font-size:13px;color:#888;margin-bottom:20px;line-height:1.5;">
+                加密导出：图片链接等数据将被加密保护，导入后编辑时不可查看链接<br>
+                明文导出：数据不加密，导入后可以查看和编辑所有内容
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div id="_export-encrypted-btn" style="flex:1;padding:12px 0;background:#007aff;color:#fff;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;">🔒 加密导出</div>
+                <div id="_export-plain-btn" style="flex:1;padding:12px 0;background:#34c759;color:#fff;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer;">📄 明文导出</div>
+            </div>
+            <div id="_export-cancel-btn" style="padding:10px 0;color:#999;font-size:14px;cursor:pointer;">取消</div>
+        `;
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        const cleanup = () => document.body.removeChild(overlay);
+
+        dialog.querySelector('#_export-encrypted-btn').onclick = () => { cleanup(); resolve('encrypted'); };
+        dialog.querySelector('#_export-plain-btn').onclick = () => { cleanup(); resolve('plain'); };
+        dialog.querySelector('#_export-cancel-btn').onclick = () => { cleanup(); resolve(null); };
+        overlay.onclick = (e) => { if (e.target === overlay) { cleanup(); resolve(null); } };
+    });
+}
+
 // ===== 主题加密/解密工具 =====
 const _THEME_KEY = 'MxTheme@2026!Enc';
 
@@ -61577,7 +61694,7 @@ function _themeDecrypt(cipherBase64) {
     return decoder.decode(decrypted);
 }
 
-// 导出单个主题为加密文件
+// 导出单个主题（用户选择加密或明文，加密导入的主题强制加密）
 async function exportSingleChatTheme(themeId) {
     try {
         const theme = await db.chat_themes.get(themeId);
@@ -61586,43 +61703,69 @@ async function exportSingleChatTheme(themeId) {
             return;
         }
 
-        // 移除数据库自增ID和accountId
-        const { id, accountId: _aid, ...rest } = theme;
+        let choice;
+        if (theme.isImported) {
+            // 加密导入的主题只允许加密导出，防止通过明文导出泄露链接
+            choice = 'encrypted';
+            showToast('🔒 该主题为加密导入，将自动加密导出');
+        } else {
+            // 自建主题让用户选择导出方式
+            choice = await _showExportEncryptDialog();
+            if (!choice) return; // 取消
+        }
 
-        // 加密
-        const themesJson = JSON.stringify([rest]);
-        const encryptedPayload = _themeEncrypt(themesJson);
+        // 移除数据库自增ID和accountId及isImported标记
+        const { id, accountId: _aid, isImported: _imp, ...rest } = theme;
 
-        const jsonData = {
-            type: 'chat_themes_export',
-            version: 2,
-            exportTime: new Date().toISOString(),
-            count: 1,
-            payload: encryptedPayload
-        };
+        let jsonData;
+
+        if (choice === 'encrypted') {
+            // 加密导出
+            const themesJson = JSON.stringify([rest]);
+            const encryptedPayload = _themeEncrypt(themesJson);
+            jsonData = {
+                type: 'chat_themes_export',
+                version: 2,
+                encrypted: true,
+                exportTime: new Date().toISOString(),
+                count: 1,
+                payload: encryptedPayload
+            };
+        } else {
+            // 明文导出
+            jsonData = {
+                type: 'chat_themes_export',
+                version: 2,
+                encrypted: false,
+                exportTime: new Date().toISOString(),
+                count: 1,
+                themes: [rest]
+            };
+        }
 
         const jsonStr = JSON.stringify(jsonData);
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
 
+        const isEnc = choice === 'encrypted';
         const safeName = (theme.name || 'theme').replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]/g, '_');
         const a = document.createElement('a');
         a.href = url;
-        a.download = `theme_${safeName}_${new Date().toISOString().slice(0,10)}.json`;
+        a.download = `theme_${safeName}_${isEnc ? 'enc_' : ''}${new Date().toISOString().slice(0,10)}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showToast(`✅ 已导出主题「${theme.name}」（已加密）`);
-        console.log('[ChatTheme] ✓ 单个主题导出成功(加密):', theme.name);
+        showToast(`✅ 已导出主题「${theme.name}」${isEnc ? '（已加密）' : '（明文）'}`);
+        console.log(`[ChatTheme] ✓ 单个主题导出成功(${isEnc ? '加密' : '明文'}):`, theme.name);
     } catch (error) {
         console.error('[ChatTheme] ✗ 导出失败:', error);
         showToast('❌ 导出失败: ' + error.message);
     }
 }
 
-// 导出全部主题为加密文件
+// 导出全部主题（用户选择加密或明文，含加密导入主题时强制加密）
 async function exportChatThemes() {
     try {
         const accountId = getCurrentAccountId() || 'offline';
@@ -61633,38 +61776,67 @@ async function exportChatThemes() {
             return;
         }
 
+        // 检查是否包含加密导入的主题
+        const hasImportedTheme = themes.some(t => t.isImported);
+
+        let choice;
+        if (hasImportedTheme) {
+            // 包含加密导入的主题，强制加密导出
+            choice = 'encrypted';
+            showToast('🔒 包含加密导入的主题，将自动加密导出');
+        } else {
+            // 全部是自建主题，让用户选择
+            choice = await _showExportEncryptDialog();
+            if (!choice) return; // 取消
+        }
+
         // 移除数据库自增ID和accountId，导入时重新生成
         const exportData = themes.map(theme => {
-            const { id, accountId: _aid, ...rest } = theme;
+            const { id, accountId: _aid, isImported: _imp, ...rest } = theme;
             return rest;
         });
 
-        // 将主题数据加密
-        const themesJson = JSON.stringify(exportData);
-        const encryptedPayload = _themeEncrypt(themesJson);
+        let jsonData;
 
-        const jsonData = {
-            type: 'chat_themes_export',
-            version: 2,
-            exportTime: new Date().toISOString(),
-            count: exportData.length,
-            payload: encryptedPayload
-        };
+        if (choice === 'encrypted') {
+            // 加密导出
+            const themesJson = JSON.stringify(exportData);
+            const encryptedPayload = _themeEncrypt(themesJson);
+            jsonData = {
+                type: 'chat_themes_export',
+                version: 2,
+                encrypted: true,
+                exportTime: new Date().toISOString(),
+                count: exportData.length,
+                payload: encryptedPayload
+            };
+        } else {
+            // 明文导出
+            jsonData = {
+                type: 'chat_themes_export',
+                version: 2,
+                encrypted: false,
+                exportTime: new Date().toISOString(),
+                count: exportData.length,
+                themes: exportData
+            };
+        }
 
         const jsonStr = JSON.stringify(jsonData);
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
 
+        const isEnc = choice === 'encrypted';
         const a = document.createElement('a');
         a.href = url;
-        a.download = `chat_themes_${new Date().toISOString().slice(0,10)}.json`;
+        a.download = `chat_themes_${isEnc ? 'enc_' : ''}${new Date().toISOString().slice(0,10)}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showToast(`✅ 已导出 ${themes.length} 个主题（已加密）`);
-        console.log('[ChatTheme] ✓ 主题导出成功(加密):', themes.length, '个');
+        showToast(`✅ 已导出 ${themes.length} 个主题${isEnc ? '（已加密）' : '（明文）'}`);
+        console.log(`[ChatTheme] ✓ 主题导出成功(${isEnc ? '加密' : '明文'}):`, themes.length, '个');
     } catch (error) {
         console.error('[ChatTheme] ✗ 导出失败:', error);
         showToast('❌ 导出失败: ' + error.message);
@@ -61690,9 +61862,11 @@ async function importChatThemes(event) {
         }
 
         let themesArr;
+        let isEncryptedSource = false; // 标记来源是否为加密文件
 
         if (jsonData.version >= 2 && jsonData.payload) {
             // v2加密格式：解密payload
+            isEncryptedSource = true;
             try {
                 const decryptedJson = _themeDecrypt(jsonData.payload);
                 themesArr = JSON.parse(decryptedJson);
@@ -61702,7 +61876,8 @@ async function importChatThemes(event) {
                 return;
             }
         } else if (Array.isArray(jsonData.themes)) {
-            // v1旧版明文格式：直接读取
+            // v2明文格式 或 v1旧版明文格式：直接读取
+            isEncryptedSource = false;
             themesArr = jsonData.themes;
         } else {
             showToast('❌ 文件格式不正确');
@@ -61723,14 +61898,21 @@ async function importChatThemes(event) {
                 ...theme,
                 accountId: accountId
             };
+            // 仅加密来源的主题标记为导入（保护URL不可见）
+            if (isEncryptedSource) {
+                themeData.isImported = true;
+            } else {
+                delete themeData.isImported;
+            }
             // 移除可能携带的旧id
             delete themeData.id;
             await db.chat_themes.add(themeData);
             importCount++;
         }
 
-        showToast(`✅ 成功导入 ${importCount} 个主题`);
-        console.log('[ChatTheme] ✓ 主题导入成功:', importCount, '个');
+        const modeText = isEncryptedSource ? '（加密主题，图片链接受保护）' : '（明文主题）';
+        showToast(`✅ 成功导入 ${importCount} 个主题${modeText}`);
+        console.log(`[ChatTheme] ✓ 主题导入成功(${isEncryptedSource ? '加密' : '明文'}):`, importCount, '个');
 
         // 刷新主题列表
         await loadChatThemeList();
