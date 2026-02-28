@@ -70,36 +70,9 @@ body {
     margin: 0;
 }
 
-/* PWA 模式下，所有 position:fixed 的全屏页面也要用 inset:0 而不是 height:100% */
-@media (display-mode: standalone) {
-    .wechat-page,
-    .chat-window,
-    .setting-page,
-    .custom-page,
-    .phone-page,
-    .entry-editor-page,
-    .sub-page-container,
-    .transfer-modal,
-    .message-page,
-    #sticker-page,
-    .chat-detail-page {
-        height: auto !important;
-    }
-}
-
-body.standalone-mode .wechat-page,
-body.standalone-mode .chat-window,
-body.standalone-mode .setting-page,
-body.standalone-mode .custom-page,
-body.standalone-mode .phone-page,
-body.standalone-mode .entry-editor-page,
-body.standalone-mode .sub-page-container,
-body.standalone-mode .transfer-modal,
-body.standalone-mode .message-page,
-body.standalone-mode #sticker-page,
-body.standalone-mode .chat-detail-page {
-    height: auto !important;
-}
+/* 🔧 已移除 standalone 模式下的 height:auto!important 覆盖规则
+   原因：所有全屏页面已统一使用 top:0;bottom:0 撑满屏幕，无需额外覆盖 height。
+   部分安卓浏览器会将显式的 height:auto 误解为"内容高度"，导致底部漏出桌面壁纸。 */
         
         /* #home-page 样式已移除，以便恢复默认文档流和滚动行为 */
         /* 顶部磨砂小组件 */
@@ -1382,6 +1355,12 @@ body.standalone-mode .chat-detail-page {
             flex-direction: column;
             animation: appLaunch 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
         }
+        /* 🔧 iOS修复：聊天窗口打开时，只隐藏wechat-page的子元素内容，
+           保留容器本身的白色背景作为安全底层，防止iOS Safari在地址栏
+           收起/展开、页面过渡动画等场景中露出系统桌面 */
+        .wechat-page.content-hidden > * {
+            visibility: hidden;
+        }
         @keyframes appLaunch {
             from { transform: scale(0.8); opacity: 0; }
             to { transform: scale(1); opacity: 1; }
@@ -2141,12 +2120,17 @@ body.standalone-mode .chat-detail-page {
             font-weight: 500;
         }
         .findphone-bottom {
-            position: relative; z-index: 1;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 16px 0 12px;
-            gap: 12px;
+            padding: 0 0 20px;
+            gap: 6px;
+            pointer-events: none;
         }
         .findphone-owner-label {
             font-size: 12px;
@@ -2156,13 +2140,14 @@ body.standalone-mode .chat-detail-page {
         .findphone-home-bar {
             width: 134px;
             height: 5px;
-            background: rgba(0,0,0,0.18);
-            border-radius: 100px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 3px;
             cursor: pointer;
             transition: background 0.2s;
+            pointer-events: auto;
         }
         .findphone-home-bar:active {
-            background: rgba(0,0,0,0.35);
+            background: rgba(0,0,0,0.5);
         }
         
         /* ===== 查手机 - 百度搜索历史页面（白色INS风） ===== */
@@ -3101,9 +3086,9 @@ body.standalone-mode .keyboard-up .chat-footer {
             color: #000;
             border-bottom-right-radius: 4px; /* 小尾巴效果 */
         }
-        /* 移除原来的三角形尾巴 */
-        .message-row.other .message-content::before,
-        .message-row.self .message-content::after {
+        /* 移除原来的三角形尾巴（仅在默认气泡样式下生效，自定义CSS时不限制伪元素） */
+        .bubble-style-default .message-row.other .message-content::before,
+        .bubble-style-default .message-row.self .message-content::after {
             display: none;
         }
         
@@ -6243,10 +6228,7 @@ body.standalone-mode .keyboard-up .chat-footer {
     right: 0;
     bottom: 0;
     width: 100%;
-    background: #000;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    background: #ffffff; /* 🔧 从 #000 改为白色，防止页面过渡时露出黑色/桌面 */
     z-index: 200;
     display: none;
 }
@@ -6299,6 +6281,7 @@ body.standalone-mode .keyboard-up .chat-footer {
     flex: 1;
     overflow-y: auto;
     padding-bottom: 20px;
+    min-height: 0; /* 🔧 flex子元素需要min-height:0才能正确收缩 */
 }
 
 .message-scroll-content::-webkit-scrollbar {
@@ -6701,18 +6684,29 @@ body.standalone-mode .keyboard-up .chat-footer {
 
 /* 底部输入区域 (复用) */
 .message-input-area {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
+    /* 🔧 iOS键盘修复：从 position:absolute 改为 flex 子元素，与 WeChat 的 chat-footer 一致
+       这样键盘弹起时，父容器高度缩小后输入框自然跟着上移 */
     background: rgba(255,255,255,0.9);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     padding: 10px 10px 30px 10px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
     border-top: 0.5px solid rgba(0,0,0,0.1);
     display: flex;
     align-items: flex-end;
     z-index: 101;
+    flex-shrink: 0; /* 键盘弹起时底栏不被压缩 */
+    transition: padding-bottom 0.15s ease;
+}
+
+/* 🔧 键盘弹起时去掉安全区域 padding（与 WeChat 的 .keyboard-up .chat-footer 一致） */
+.keyboard-up .message-input-area {
+    padding-bottom: 0 !important;
+}
+
+/* 🔧 iOS PWA 模式下键盘上方的操作栏遮挡修复 */
+body.standalone-mode .keyboard-up .message-input-area {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 10px) !important;
 }
 
 .message-input-plus {

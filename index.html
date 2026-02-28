@@ -177,6 +177,10 @@
                             <div class="icon"></div>
                             <div class="name">占位</div>
                         </div>
+                        <div class="app-icon" id="icon-placeholder3">
+                            <div class="icon"></div>
+                            <div class="name">占位</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1445,7 +1449,7 @@
 
     <!-- 查手机 - 第一步：选择用户账号（白色INS风） -->
     <div class="wechat-page" id="findphone-page" style="display:none; background:#f7f7f7; z-index:300;">
-        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0; padding-top:12px; height:auto; min-height:44px;">
+        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0;">
             <div class="back-btn" onclick="hideFindPhonePage()" style="margin:0; background:none; width:40px; justify-content:flex-start; padding-left:0; color:#333;">
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </div>
@@ -1464,7 +1468,7 @@
     
     <!-- 查手机 - 第二步：选择角色好友 -->
     <div class="wechat-page" id="findphone-roles-page" style="display:none; background:#f7f7f7; z-index:305;">
-        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0; padding-top:12px; height:auto; min-height:44px;">
+        <div class="wechat-header" style="background:#fff; border-bottom:1px solid #f0f0f0;">
             <div class="back-btn" onclick="hideFindPhoneRolesPage()" style="margin:0; background:none; width:40px; justify-content:flex-start; padding-left:0; color:#333;">
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </div>
@@ -2616,6 +2620,27 @@
                 <div class="detail-item">
                     <div>触发间隔 (分钟)</div>
                     <input type="number" id="detail-auto-chat-interval" placeholder="30" style="border:none; background:transparent; width:60px; text-align:right; font-size:16px; color:#8e8e93; outline:none;">
+                </div>
+            </div>
+
+            <!-- 小剧场模式设置 -->
+            <div class="detail-group">
+                <div class="detail-item">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div>🎭 小剧场模式</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">开启后AI可回复长文/HTML番外，不强制分割消息</div>
+                    </div>
+                    <label class="ios-switch">
+                        <input type="checkbox" id="detail-theater-mode-switch">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div style="padding:12px 16px; font-size:12px; color:#999; line-height:1.6; background:#f8f8f8; border-radius:8px; margin:0 16px 12px 16px;">
+                    <div style="font-weight:600; color:#666; margin-bottom:6px;">功能说明：</div>
+                    <div>• 开启后AI不再强制用 ||| 分割消息，可以回复长篇内容</div>
+                    <div>• 支持AI返回HTML格式的小剧场/番外内容</div>
+                    <div>• 为安全起见，JavaScript代码会被自动过滤</div>
+                    <div>• 适合需要AI写小番外、长段剧情、HTML互动剧场的场景</div>
                 </div>
             </div>
 
