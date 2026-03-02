@@ -574,6 +574,8 @@ body {
             display: flex;
             align-items: flex-end;
             justify-content: center;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         .image-picker-card {
             background: #fff;
@@ -585,6 +587,8 @@ body {
             flex-direction: column;
             gap: 0;
             animation: pickerSlideUp 0.25s ease;
+            flex-shrink: 0;
+            margin-top: auto;
         }
         @keyframes pickerSlideUp {
             from { transform: translateY(100%); }

@@ -1030,7 +1030,7 @@
                     <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
                         <div class="api-label">系统基础 Prompt</div>
                         <div class="api-input-group">
-                            <textarea class="api-input" id="novelai-system-prompt" placeholder="输入系统基础 Prompt（风格、质量、通用约束）" rows="3" onchange="autoSaveNovelAI()" style="resize: vertical; min-height: 80px;">masterpiece, best quality, highres, 1girl, solo, anime style, detailed, beautiful, cute</textarea>
+                            <textarea class="api-input" id="novelai-system-prompt" placeholder="输入系统基础 Prompt（风格、质量、通用约束）" rows="3" onchange="autoSaveNovelAI()" style="resize: vertical; min-height: 80px;"></textarea>
                         </div>
                         <div style="font-size: 11px; color: #999; margin-top: 4px; padding: 0 4px;">
                             提示：将自动添加到所有生成请求的开头
@@ -5246,8 +5246,8 @@
                 </div>
 
                 <!-- 输入框区域 -->
-                <div style="position: absolute; bottom: 20px; left: 0; width: 100%; padding: 0 15px; display: flex; align-items: center; gap: 10px; z-index: 10;">
-                    <input type="text" id="video-msg-input" placeholder="输入文字消息..." style="flex: 1; height: 42px; padding: 0 16px; border-radius: 21px; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,255,255,0.15); font-size: 14px; color: #fff; outline: none; transition: border-color 0.2s ease; backdrop-filter: blur(10px);">
+                <div id="video-input-bar" style="position: absolute; bottom: 20px; left: 0; width: 100%; padding: 0 15px; display: flex; align-items: center; gap: 10px; z-index: 10; transition: bottom 0.2s ease; box-sizing: border-box;">
+                    <input type="text" id="video-msg-input" placeholder="输入文字消息..." onfocus="onVideoInputFocus()" onblur="onVideoInputBlur()" style="flex: 1; height: 42px; padding: 0 16px; border-radius: 21px; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,255,255,0.15); font-size: 16px; color: #fff; outline: none; transition: border-color 0.2s ease; backdrop-filter: blur(10px);">
                     <button onclick="sendVideoMessage()" style="width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; backdrop-filter: blur(10px);">
                         <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: #FFFFFF;">
                             <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
@@ -5256,7 +5256,7 @@
                 </div>
 
                 <!-- 底部功能按钮栏 -->
-                <div style="position: absolute; bottom: 80px; left: 0; width: 100%; display: flex; justify-content: center; gap: 60px; z-index: 10;">
+                <div id="video-btn-bar" style="position: absolute; bottom: 80px; left: 0; width: 100%; display: flex; justify-content: center; gap: 60px; z-index: 10; transition: bottom 0.2s ease;">
                     <button onclick="hangupVideoCall()" style="width: 52px; height: 52px; border-radius: 26px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,60,60,0.8); cursor: pointer; transition: all 0.2s ease; backdrop-filter: blur(10px);">
                         <svg viewBox="0 0 24 24" style="width: 20px; height: 20px; fill: #FFFFFF;">
                             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
