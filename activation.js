@@ -77,19 +77,32 @@
      * 生成设备指纹（结合设备ID和浏览器特征，确保唯一性）
      * 设备ID确保每个浏览器实例唯一，浏览器特征用于额外验证
      * 
-     * 兼容性：如果已有旧的激活记录，尝试使用旧的设备指纹格式进行验证
+     * 兼容性：根据激活时使用的格式来决定验证时使用的格式
+     * 确保验证时使用的格式与激活时完全一致，避免刷新后验证失败
      */
     function generateDeviceFingerprint() {
-        // 检查是否有旧的激活记录（使用旧的设备指纹格式）
-        const storedCode = getStoredCode();
-        if (storedCode) {
-            // 如果有旧记录，先尝试使用旧格式（仅User-Agent）进行验证
-            // 如果验证失败，后端会要求重新激活，届时会使用新格式
-            const oldFormat = (navigator.userAgent || '').substring(0, 200);
-            return oldFormat;
+        // 检查是否有激活记录，以及激活时使用的格式
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                const parsed = JSON.parse(data);
+                // 如果激活时使用的是旧格式（没有记录useNewFormat或为false）
+                if (!parsed.useNewFormat) {
+                    // 使用旧格式（仅User-Agent），与激活时保持一致
+                    return (navigator.userAgent || '').substring(0, 200);
+                }
+                // 如果激活时使用的是新格式，继续使用新格式
+            }
+        } catch (e) {
+            // 解析失败，检查是否有UUID来决定格式
+            // 如果没有UUID，可能是旧用户，使用旧格式
+            const hasDeviceId = localStorage.getItem(DEVICE_ID_KEY);
+            if (!hasDeviceId) {
+                return (navigator.userAgent || '').substring(0, 200);
+            }
         }
         
-        // 新激活：使用UUID + 浏览器特征
+        // 新格式：使用UUID + 浏览器特征
         const deviceId = getOrCreateDeviceId();
         const parts = [
             deviceId,
@@ -141,11 +154,14 @@
     }
     
     function saveActivation(code, qq) {
+        // 记录激活时使用的设备指纹格式（是否有UUID）
+        const hasDeviceId = !!localStorage.getItem(DEVICE_ID_KEY);
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
             activated: true,
             code: code,
             qq: qq || null,
-            time: Date.now()
+            time: Date.now(),
+            useNewFormat: hasDeviceId  // 记录是否使用新格式
         }));
         localStorage.setItem(STORAGE_CODE_KEY, code);
     }
