@@ -1,6 +1,7 @@
 /* 激活码界面样式 — 纯白简约 ins 风 · 樱花粉点缀 · 灰色字体 */
 
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
+/* Google Fonts 改为在 font-family 中声明 fallback，避免 @import 阻塞渲染导致白屏 */
+/* 如需加载 Noto Sans SC，请在 HTML 中用 <link rel="stylesheet" media="print" onload="this.media='all'"> 方式异步加载 */
 
 /* ===== 全屏遮罩 ===== */
 #activation-overlay {

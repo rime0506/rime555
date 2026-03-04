@@ -16,8 +16,16 @@
     <!-- iOS 图标 -->
     <link rel="apple-touch-icon" href="https://img.heliar.top/file/1770541813634_无标题434_20260208170943.png">
     
+    <!-- Google Fonts 异步加载（避免阻塞渲染，中国大陆用户可能无法访问） -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&display=swap" media="print" onload="this.media='all'">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" media="print" onload="this.media='all'">
+    <noscript>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&display=swap">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+    </noscript>
+    
     <!-- 激活码验证样式（独立文件） -->
-    <link rel="stylesheet" href="activation.css?v=1.0">
+    <link rel="stylesheet" href="activation.css?v=1.1">
     
     <!-- 引入外部样式表 - 添加版本号防止缓存 -->
     <link rel="stylesheet" href="style.css?v=6.0">
@@ -45,10 +53,11 @@
         }
     })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js" defer></script>
+    <!-- 🔧 Dexie 必须同步加载（不能 defer），因为 script.js 在全局作用域立即使用 new Dexie() -->
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
-    <!-- SortableJS 用于拖拽排序 -->
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js" defer></script>
+    <!-- SortableJS 用于拖拽排序（锁定版本号，避免 @latest 引入破坏性更新） -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js" defer></script>
 </head>
 <body id="desktop-body">
     <noscript>
@@ -3702,9 +3711,10 @@
             <div class="back-btn" onclick="hideLorebookDetail()" style="margin:0; background:none; width:40px; justify-content:flex-start; padding-left:0; color:var(--ins-text);">
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </div>
-            <div class="wechat-title" id="lb-detail-title">世界书详情</div>
+            <div class="wechat-title" id="lb-detail-title" onclick="renameLorebookTitle()" style="cursor:pointer;" title="点击修改名称">世界书详情</div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <div onclick="saveAndRefreshLorebook()" style="font-size:14px; color:var(--ins-pink); font-weight:600; cursor:pointer;">保存</div>
+                <div onclick="exportLorebook(currentBookId)" style="font-size:13px; color:var(--ins-pink); cursor:pointer;">导出</div>
+                <div onclick="saveAndRefreshLorebook()" style="font-size:13px; color:var(--ins-pink); font-weight:600; cursor:pointer;">保存</div>
                 <div class="wechat-add" onclick="showEntryEditor(currentBookId, null)" style="width:40px; text-align:right; display:flex; align-items:center; justify-content:flex-end;">
                     <svg class="svg-icon" style="width:24px; height:24px; stroke:var(--ins-pink);" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </div>
@@ -3729,12 +3739,6 @@
             </div>
         </div>
         
-        <!-- 底部操作栏 -->
-        <div class="dock" style="position:absolute; bottom:20px; height:60px; border-radius:16px; background:rgba(255,255,255,0.9);">
-            <div class="dock-icon" onclick="exportLorebook(currentBookId)" style="flex:1; display:flex; align-items:center; justify-content:center; color:var(--ins-pink);">
-                <span style="font-size:16px;">导出 JSON</span>
-            </div>
-        </div>
     </div>
 
     <!-- 词条编辑页 -->
@@ -5639,7 +5643,7 @@
                     <div class="wyy-avatar-wrapper">
                         <div class="wyy-avatar" id="wyyAvatarDisplay"></div>
                     </div>
-                    <div class="wyy-nickname">user <span class="wyy-vip-tag">VIP叁</span></div>
+                    <div class="wyy-nickname" id="wyyNicknameDisplay">user <span class="wyy-vip-tag">VIP叁</span></div>
                     <div class="wyy-user-stats">
                         <div class="wyy-stat-item" data-type="follow">
                             <div class="wyy-stat-value">29</div>
@@ -5772,6 +5776,10 @@
                     </div>
                     
                     <div class="wyy-info-edit-section">
+                        <div class="wyy-edit-group">
+                            <label class="wyy-edit-label">名字</label>
+                            <input type="text" class="wyy-edit-input" id="wyyNicknameInput" placeholder="输入名字" value="user">
+                        </div>
                         <div class="wyy-edit-group">
                             <label class="wyy-edit-label">关注数量</label>
                             <input type="text" class="wyy-edit-input" id="wyyFollowInput" placeholder="输入关注数量" value="29">

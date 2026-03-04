@@ -572,6 +572,21 @@ window.addEventListener('resize', function() {
 });
 
 // 初始化DEXie数据库
+// 🛡️ 安全检查：如果 Dexie 未加载（CDN故障/网络问题），给出明确提示而非白屏
+if (typeof Dexie === 'undefined') {
+    document.addEventListener('DOMContentLoaded', function() {
+        var loadingScreen = document.getElementById('app-loading-screen');
+        if (loadingScreen) {
+            loadingScreen.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:18px;padding:20px;text-align:center;">' +
+                '<div style="font-size:48px;">⚠️</div>' +
+                '<div style="font-size:16px;color:#333;font-weight:500;">核心组件加载失败</div>' +
+                '<div style="font-size:13px;color:#999;line-height:1.8;max-width:300px;">数据库引擎(Dexie)未能加载，可能是网络问题。<br>请检查网络连接后刷新页面重试。</div>' +
+                '<button onclick="location.reload()" style="margin-top:12px;padding:10px 28px;background:#ffb6c1;color:#fff;border:none;border-radius:10px;font-size:14px;cursor:pointer;">刷新重试</button>' +
+                '</div>';
+        }
+    });
+    throw new Error('[Fatal] Dexie library not loaded. CDN may be blocked or network unavailable.');
+}
 const db = new Dexie('DesktopDB');
 // 版本升级：增加 lorebooks 表
 db.version(1).stores({
@@ -1146,7 +1161,7 @@ async function safeDbPut(table, data, label, maxRetries = 3, delayMs = 500) {
 }
 
 // ==================== 🚀 内存缓存层（性能优化） ====================
-// 模仿参考项目 EPhone 的 state.chats 方案：数据常驻内存，DB 仅做持久化
+// 数据常驻内存，DB 仅做持久化
 // 减少 IndexedDB 读写频率，从根本上解决"群聊卡顿 / 页面崩溃"问题
 
 /** 群聊对象缓存 groupId → group */
@@ -1954,7 +1969,7 @@ async function saveFinanceData(key, value) {
             }
         }
 
-        // --- Web Worker 保活机制 (来自 pwa) ---
+        // --- Web Worker 保活机制 ---
         // 通过 Blob 创建内联 Worker，后台时 Worker 的 setInterval 不受浏览器节流限制
         let keepAliveWorker = null;
         try {
@@ -6677,7 +6692,7 @@ ${existingChatsContext.join('\n\n')}
                     @keyframes slideOutRight { from { transform: translateX(0); } to { transform: translateX(100%); } }
                 </style>
                 <!-- 顶部标题栏 -->
-                <div style="display:flex; align-items:center; padding:12px 16px; background:#fff; border-bottom:0.5px solid #e5e5e5; flex-shrink:0;">
+                <div style="display:flex; align-items:center; height:88px; padding-top:44px; padding-bottom:10px; padding-left:16px; padding-right:16px; background:#fff; border-bottom:0.5px solid #e5e5e5; flex-shrink:0; box-sizing:border-box;">
                     <div id="fp-detail-back-btn" style="cursor:pointer; padding:4px; margin-right:8px;">
                         <svg viewBox="0 0 24 24" style="width:24px; height:24px; fill:none; stroke:#333; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;"><polyline points="15 18 9 12 15 6"></polyline></svg>
                     </div>
@@ -23407,7 +23422,7 @@ self.addEventListener('message', function(event) {
                     console.log('[AutoChat] ✓ Page became visible, checking for pending messages...');
                     showDebugToast('✓ 返回前台，检查消息...');
                     
-                    // 🔧 只做一次温和检查，不再多轮密集补发（参考业界做法）
+                    // 🔧 只做一次温和检查，不再多轮密集补发
                     setTimeout(() => {
                         checkAutoChat();
                         checkAutoMoments();
@@ -24259,6 +24274,9 @@ thought 要求：
   "thought": "你此刻内心真实的想法和情绪（必填！至少10字）"
 }
 - reply：你的回复内容，小剧场模式下可以生成长篇内容，无需使用|||分割
+- thought：你的内心独白，必须写出真实心理活动，不能省略！
+- ⚠️ **心声是你内心的真实想法，不是对行为的描述！禁止在心声中提到"指令"、"格式"等AI相关词汇！**
+- ⚠️ **如果你发了图片/表情包，心声应该写你对这张图片的感受，而不是说"我发了一个图片指令"！**
 - 禁止输出纯文本，必须输出上述 JSON 格式。thought 不能省略！` : `
 
 ---
@@ -24269,6 +24287,9 @@ thought 要求：
   "thought": "你此刻内心真实的想法和情绪（必填！至少10字）"
 }
 - reply 必须发送 ${char.reply_min_count || 1}-${char.reply_max_count || 3} 条消息，用|||分隔${(char.reply_min_count || 1) > 1 ? `，最少${char.reply_min_count}条！` : ''}
+- thought：你的内心独白，必须写出真实心理活动，不能省略！
+- ⚠️ **心声是你内心的真实想法，不是对行为的描述！禁止在心声中提到"指令"、"格式"等AI相关词汇！**
+- ⚠️ **如果你发了图片/表情包，心声应该写你对这张图片的感受，而不是说"我发了一个图片指令"！**
 - 禁止输出纯文本，必须输出上述 JSON 格式。thought 不能省略！`;
 
                 const messages = [
@@ -25728,7 +25749,7 @@ thought 要求：
                 }
 
                 // 🔧 成功发送后直接重置冷却到当前时间（不再补发连发）
-                // 参考业界做法：发完一条就从"现在"重新计时，避免后台回来时连发多条
+                // 发完一条就从"现在"重新计时，避免后台回来时连发多条
                 lastAutoChatActionTime.set(char.id, Date.now());
                 console.log(`[AutoChat] 冷却已重置: ${char.name}, 下次触发在 ${char.auto_reply_interval} 分钟后`);
 
@@ -33610,6 +33631,9 @@ ${togetherListenInfo.isPlaying ? '正在播放中...' : '已暂停'}
 
 - reply：你的回复内容，小剧场模式下可以生成长篇内容，无需使用|||分割
 - thought：你的内心独白，必须写出真实心理活动，不能省略！
+- ⚠️ **心声是你内心的真实想法，不是对行为的描述！禁止在心声中提到"指令"、"格式"、"发送了图片指令"等AI相关词汇！**
+- ⚠️ **如果你发了图片/表情包，心声应该写你对这张图片的感受（比如"这张照片拍得不错"），而不是说"我发了一个图片指令"！**
+- ⚠️ **心声要像真人的内心独白，专注于你的情绪、想法、感受，而不是描述你做了什么操作！**
 - 禁止输出纯文本，必须输出上述 JSON 格式
 - 禁止用 Markdown 代码块包裹` : `
 
@@ -33627,6 +33651,9 @@ ${togetherListenInfo.isPlaying ? '正在播放中...' : '已暂停'}
 - reply：你发送的消息内容，**必须发送 ${char.reply_min_count || 1}-${char.reply_max_count || 3} 条消息，用|||分隔**${(char.reply_min_count || 1) > 1 ? `，最少${char.reply_min_count}条！` : ''}
 - **⚠️ 每个|||之间只能有一个短句！禁止在一个气泡里塞多句话！禁止用空格连接多句话！**
 - thought：你的内心独白，必须写出真实心理活动，不能省略！
+- ⚠️ **心声是你内心的真实想法，不是对行为的描述！禁止在心声中提到"指令"、"格式"、"发送了图片指令"等AI相关词汇！**
+- ⚠️ **如果你发了图片/表情包，心声应该写你对这张图片的感受（比如"这张照片拍得不错"），而不是说"我发了一个图片指令"！**
+- ⚠️ **心声要像真人的内心独白，专注于你的情绪、想法、感受，而不是描述你做了什么操作！**
 - 禁止输出纯文本，必须输出上述 JSON 格式
 - 禁止用 Markdown 代码块包裹`;
 
@@ -38664,6 +38691,20 @@ function showLorebookPage() {
             loadLorebookList(); // 返回时刷新列表
         }
 
+        // 修改世界书大标题名称
+        async function renameLorebookTitle() {
+            if (!currentBookId) return;
+            const book = await db.lorebooks.get(currentBookId);
+            if (!book) return;
+            const newName = prompt('请输入新的世界书名称：', book.name);
+            if (newName === null || newName.trim() === '') return;
+            book.name = newName.trim();
+            await db.lorebooks.put(book);
+            const scope = book.scope || 'personal';
+            const scopeLabel = scope === 'global' ? ' [全局]' : ' [单人]';
+            document.getElementById('lb-detail-title').innerText = book.name + scopeLabel;
+        }
+
         // 保存按钮：刷新列表并提示
         async function saveAndRefreshLorebook() {
             await loadLorebookList();
@@ -40348,6 +40389,12 @@ let desktopSortable = null;
 function initDesktopDrag() {
     const grid = document.getElementById('app-grid');
     if (!grid) return;
+
+    // 🛡️ 检查 SortableJS 是否已加载（CDN可能加载失败）
+    if (typeof Sortable === 'undefined') {
+        console.warn('[Desktop] SortableJS 未加载，桌面拖拽功能不可用');
+        return;
+    }
 
     // 检测是否是移动设备
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -46603,6 +46650,8 @@ const wyyAvatarFileInput = document.getElementById('wyyAvatarFileInput');
 const wyyAvatarDisplay = document.getElementById('wyyAvatarDisplay');
 const wyyModalAvatarPreview = document.getElementById('wyyModalAvatarPreview');
 
+const wyyNicknameInput = document.getElementById('wyyNicknameInput');
+const wyyNicknameDisplay = document.getElementById('wyyNicknameDisplay');
 const wyyFollowInput = document.getElementById('wyyFollowInput');
 const wyyFansInput = document.getElementById('wyyFansInput');
 const wyyLevelInput = document.getElementById('wyyLevelInput');
@@ -46732,11 +46781,13 @@ async function wyyLoadCurrentSettings() {
             wyyModalAvatarPreview.style.backgroundImage = '';
         }
         
+        const savedNickname = (await wyyDb.userSettings.get('nickname'))?.data || 'user';
         const savedFollow = (await wyyDb.userSettings.get('follow'))?.data || '29';
         const savedFans = (await wyyDb.userSettings.get('fans'))?.data || '9';
         const savedLevel = (await wyyDb.userSettings.get('level'))?.data || 'Lv.7';
         const savedTime = (await wyyDb.userSettings.get('time'))?.data || '904h';
         
+        if (wyyNicknameInput) wyyNicknameInput.value = savedNickname;
         if (wyyFollowInput) wyyFollowInput.value = savedFollow;
         if (wyyFansInput) wyyFansInput.value = savedFans;
         if (wyyLevelInput) wyyLevelInput.value = savedLevel;
@@ -46764,6 +46815,16 @@ async function wyySaveSettings() {
         if (wyyTempAvatar) {
             if (wyyAvatarDisplay) wyyAvatarDisplay.style.backgroundImage = `url(${wyyTempAvatar})`;
             await wyyDb.userSettings.put({ id: 'avatar', data: wyyTempAvatar });
+        }
+        
+        if (wyyNicknameInput) {
+            const nickname = wyyNicknameInput.value.trim() || 'user';
+            if (wyyNicknameDisplay) {
+                const vipTag = wyyNicknameDisplay.querySelector('.wyy-vip-tag');
+                const vipTagHtml = vipTag ? vipTag.outerHTML : '';
+                wyyNicknameDisplay.innerHTML = nickname + ' ' + vipTagHtml;
+            }
+            await wyyDb.userSettings.put({ id: 'nickname', data: nickname });
         }
         
         if (wyyFollowInput && wyyFansInput && wyyLevelInput && wyyTimeInput) {
@@ -47610,11 +47671,17 @@ window.addEventListener('DOMContentLoaded', async () => {
             wyyAvatarDisplay.style.backgroundImage = `url(${savedAvatar.data})`;
         }
         
+        const savedNickname = await wyyDb.userSettings.get('nickname');
         const savedFollow = await wyyDb.userSettings.get('follow');
         const savedFans = await wyyDb.userSettings.get('fans');
         const savedLevel = await wyyDb.userSettings.get('level');
         const savedTime = await wyyDb.userSettings.get('time');
         
+        if (savedNickname && wyyNicknameDisplay) {
+            const vipTag = wyyNicknameDisplay.querySelector('.wyy-vip-tag');
+            const vipTagHtml = vipTag ? vipTag.outerHTML : '';
+            wyyNicknameDisplay.innerHTML = savedNickname.data + ' ' + vipTagHtml;
+        }
         if (savedFollow && wyyFollowValue) wyyFollowValue.textContent = savedFollow.data;
         if (savedFans && wyyFansValue) wyyFansValue.textContent = savedFans.data;
         if (savedLevel && wyyLevelValue) wyyLevelValue.textContent = savedLevel.data;

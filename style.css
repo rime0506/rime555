@@ -2450,6 +2450,15 @@ body {
             flex-direction: column;
             animation: slideLeft 0.3s ease;
         }
+        /* 🔧 修复查手机模式下聊天详情页和群聊详情页的顶栏高度 */
+        .chat-detail-page .wechat-header,
+        #group-detail-page .wechat-header,
+        #group-member-manage-page .wechat-header {
+            height: 88px !important; /* 包含状态栏高度 */
+            padding-top: 44px !important; /* 避让状态栏 */
+            padding-bottom: 10px !important;
+            box-sizing: border-box;
+        }
         .detail-group {
             background: #fff;
             margin-top: 20px;
@@ -4075,7 +4084,7 @@ body.standalone-mode .keyboard-up .chat-footer {
             color: #333;
         }
 
-        /* 语音气泡样式 - 参考语音条.txt的波纹动画效果 */
+        /* 语音气泡样式 */
         .voice-bubble {
             display: flex;
             align-items: center;
@@ -9114,7 +9123,7 @@ body.standalone-mode .keyboard-up .message-input-area {
 }
 
 /* 小屋页面样式 - 白色简约+粉色点缀 */
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+/* 🔧 @import 已移到 HTML 中异步加载，避免放在CSS中间导致后续规则被浏览器忽略 */
 
 #cabin-page .custom-page-header {
     background: #fefefe;
