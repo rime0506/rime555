@@ -16,6 +16,9 @@
     <!-- iOS 图标 -->
     <link rel="apple-touch-icon" href="https://img.heliar.top/file/1770541813634_无标题434_20260208170943.png">
     
+    <!-- 激活码验证样式（独立文件） -->
+    <link rel="stylesheet" href="activation.css?v=1.0">
+    
     <!-- 引入外部样式表 - 添加版本号防止缓存 -->
     <link rel="stylesheet" href="style.css?v=6.0">
     
@@ -122,10 +125,6 @@
                         <div class="app-icon" id="icon-facetime" onclick="showLorebookPage()">
                             <div class="icon"></div>
                             <div class="name">世界书</div>
-                        </div>
-                        <div class="app-icon" id="icon-calendar" style="display:none;">
-                            <div class="icon"></div>
-                            <div class="name">日历</div>
                         </div>
                         <!-- 情侣组件 (头像 + 倒数日) -->
                         <div class="couple-widget" id="widget-couple">
@@ -2449,12 +2448,6 @@
                                         <svg class="svg-icon" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                                     </div>
                                     <div class="action-name">位置</div>
-                                </div>
-                                <div class="action-item" onclick="showCalendarPage()">
-                                    <div class="action-icon-box">
-                                        <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                    </div>
-                                    <div class="action-name">日历</div>
                                 </div>
                                 <div class="action-item" onclick="initiateVideoCall()">
                                     <div class="action-icon-box">
@@ -5089,82 +5082,6 @@
         </div>
     </div>
 
-    <!-- 日历设置页面 (Premium Pink Pro) -->
-    <div class="wechat-page" id="calendar-page" style="z-index: 220;">
-        <!-- 关闭按钮 -->
-        <div class="calendar-close-btn" onclick="hideCalendarPage()">
-            <svg class="svg-icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </div>
-
-        <div class="calendar-wrapper">
-            
-            <!-- 头部导航 -->
-            <div class="cal-header">
-                <button class="nav-btn" id="cal-prevBtn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-                </button>
-                
-                <!-- 可点击的日期标题 -->
-                <button class="current-date-btn" id="cal-headerTitleBtn">
-                    <span id="cal-monthYearText">Loading...</span>
-                    <svg class="caret-icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-                </button>
-                
-                <button class="nav-btn" id="cal-nextBtn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-                </button>
-            </div>
-
-            <!-- 主内容区：包含两个图层 (日历层/选择器层) -->
-            <div class="cal-main-content">
-                
-                <!-- 层 2: 年月选择器 -->
-                 <div class="view-layer selector-view" id="cal-selectorLayer">
-                    <div class="month-selector" id="cal-monthGrid">
-                        <!-- JS 生成月份 -->
-                    </div>
-                    <div class="year-selector" id="cal-yearList">
-                        <!-- JS 生成年份 -->
-                    </div>
-                </div>
-
-                <!-- 层 1: 具体日期 (默认显示) -->
-                <div class="view-layer active" id="cal-calendarLayer">
-                    <div class="weekdays">
-                        <span>SU</span><span>MO</span><span>TU</span><span>WE</span><span>TH</span><span>FR</span><span>SA</span>
-                    </div>
-                    <div class="days" id="cal-daysContainer">
-                        <!-- JS 生成日期 -->
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- 底部固定区域 -->
-            <div class="cal-bottom-ui">
-                <div class="cal-divider"></div>
-                <div class="cal-time-mode">
-                    <div class="time-mode-text">
-                        <div class="time-mode-title">虚拟时间</div>
-                        <div class="time-mode-sub">关闭=现实时间</div>
-                    </div>
-                    <label class="ios-switch">
-                        <input type="checkbox" id="cal-time-mode-toggle">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                <div class="time-picker">
-                    <span class="time-label">TIME</span>
-                    <div class="time-inputs">
-                        <input type="number" id="cal-hourInput" class="time-input" min="0" max="23" value="09">
-                        <span class="time-seperator">:</span>
-                        <input type="number" id="cal-minuteInput" class="time-input" min="0" max="59" value="30">
-                    </div>
-                </div>
-                <button class="cal-confirm-btn" id="cal-confirmBtn">CONFIRM SCHEDULE</button>
-            </div>
-        </div>
-    </div>
 
     <!-- 角色来电横幅通知 -->
     <div id="incoming-call-overlay" style="display:none; position:fixed; top:12px; left:50%; transform:translateX(-50%); width:calc(100% - 24px); max-width:400px; z-index:9999; background:#fff; border-radius:14px; box-shadow:0 6px 30px rgba(0,0,0,0.2); padding:14px 16px; animation:incomingSlideDown 0.35s ease-out;">
@@ -7942,6 +7859,8 @@
     </div>
 
     <!-- 引入外部 JavaScript 文件 -->
+    <!-- 激活码验证脚本（独立文件，必须在 script.js 之前） -->
+    <script src="activation.js"></script>
     <script src="script.js" defer></script>
     
 

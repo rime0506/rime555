@@ -1,0 +1,245 @@
+/* 激活码界面样式 — 纯白简约 ins 风 · 樱花粉点缀 · 灰色字体 */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600&display=swap');
+
+/* ===== 全屏遮罩 ===== */
+#activation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    z-index: 9999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    transition: opacity 0.6s ease;
+    padding: 20px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+/* ===== 激活卡片 ===== */
+.activation-card {
+    position: relative;
+    z-index: 1;
+    background: #ffffff;
+    border-radius: 24px;
+    padding: 18px 36px 40px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 0 0 1px rgba(255, 249, 251, 0.5);
+    text-align: center;
+    animation: activation-slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes activation-slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* ===== 顶部装饰线 ===== */
+.activation-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 48px;
+    height: 3px;
+    background: linear-gradient(90deg, #FFF9FB, #FFF9FB, #FFF9FB);
+    border-radius: 0 0 4px 4px;
+}
+
+/* ===== 图标区域 ===== */
+.activation-icon {
+    width: 68px;
+    height: 68px;
+    margin: 0 auto 24px;
+    background: #FFF9FB;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #D590A4;
+}
+
+/* ===== 标题 ===== */
+.activation-title {
+    font-size: 20px;
+    font-weight: 500;
+    color: #D590A4;
+    margin: 0 0 8px;
+    letter-spacing: 1px;
+}
+
+/* ===== 分隔装饰 ===== */
+.activation-divider {
+    display: flex;
+    align-items: center;
+    margin: 0 0 24px;
+    gap: 12px;
+}
+
+.activation-divider::before,
+.activation-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #FFF9FB, transparent);
+}
+
+.activation-divider-dot {
+    width: 4px;
+    height: 4px;
+    background: #FFF9FB;
+    border-radius: 50%;
+}
+
+/* ===== 描述文字 ===== */
+.activation-desc {
+    font-size: 13px;
+    color: #9E9899;
+    margin: 0 0 32px;
+    font-weight: 300;
+    letter-spacing: 0.5px;
+}
+
+/* ===== 输入框容器 ===== */
+.activation-input-wrap {
+    margin-top: 8px;
+    margin-bottom: 18px;
+}
+
+/* ===== 输入框 ===== */
+.activation-input {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Courier New', Courier, monospace;
+    font-weight: 500;
+    letter-spacing: 3px;
+    text-align: center;
+    border: 1.5px solid #FFF9FB;
+    border-radius: 14px;
+    outline: none;
+    background: #ffffff;
+    color: #9E9899;
+    box-sizing: border-box;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.activation-input:focus {
+    border-color: #FFF9FB;
+    box-shadow: 0 0 0 3px rgba(255, 249, 251, 0.3);
+}
+
+.activation-input::placeholder {
+    color: #9E9899;
+    font-weight: 400;
+    letter-spacing: 2px;
+    font-size: 14px;
+}
+
+/* ===== 输入框抖动动画 ===== */
+.activation-input.shake {
+    animation: activation-shake 0.45s ease;
+}
+
+@keyframes activation-shake {
+    0%, 100% { transform: translateX(0); }
+    15%, 45%, 75% { transform: translateX(-4px); }
+    30%, 60%, 90% { transform: translateX(4px); }
+}
+
+/* ===== 验证按钮 ===== */
+.activation-btn {
+    width: 100%;
+    padding: 13px 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #D590A4;
+    background: #ffffff;
+    border: 1.5px solid #D590A4;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.3s ease, opacity 0.2s ease;
+    letter-spacing: 6px;
+    font-family: 'Noto Sans SC', sans-serif;
+}
+
+.activation-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(213, 144, 164, 0.3);
+}
+
+.activation-btn:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.activation-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* ===== 消息提示 ===== */
+.activation-message {
+    min-height: 20px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: #9E9899;
+    transition: all 0.3s ease;
+    font-weight: 400;
+}
+
+.activation-message.error {
+    color: #D590A4;
+}
+
+.activation-message.success {
+    color: #8cc5a0;
+}
+
+/* ===== 底部提示 ===== */
+.activation-hint {
+    margin-top: 22px;
+    font-size: 11px;
+    color: #9E9899;
+    font-weight: 300;
+    letter-spacing: 0.5px;
+}
+
+/* ===== 移动端适配 ===== */
+@media (max-width: 420px) {
+    .activation-card {
+        padding: 10px 24px 32px;
+        border-radius: 20px;
+    }
+
+    .activation-title {
+        font-size: 18px;
+    }
+
+    .activation-input {
+        font-size: 15px;
+        padding: 12px 14px;
+        letter-spacing: 2px;
+    }
+
+    .activation-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 16px;
+    }
+}

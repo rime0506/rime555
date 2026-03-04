@@ -6597,6 +6597,220 @@ body.standalone-mode .keyboard-up .chat-footer {
     left: 50%;
     transform: translateX(-50%);
 }
+
+/* ==================== 消息长按操作菜单 ==================== */
+.message-action-menu {
+    position: fixed;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 8px;
+    display: flex;
+    gap: 8px;
+    z-index: 10000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    animation: messageMenuFadeIn 0.2s ease-out;
+}
+
+@keyframes messageMenuFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.message-action-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 16px;
+    color: #fff;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.2s;
+    min-width: 60px;
+}
+
+.message-action-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.message-action-item:active {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.message-action-item svg {
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+}
+
+.message-action-item span {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* ==================== 消息多选模式 ==================== */
+.message-wrapper.multi-select-mode {
+    position: relative;
+    padding-left: 50px;
+    transition: padding 0.2s;
+}
+
+.message-wrapper.multi-select-mode::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    border: 2px solid #d0d0d0;
+    border-radius: 50%;
+    background: #fff;
+    transition: all 0.2s;
+}
+
+.message-wrapper.multi-select-mode.selected::before {
+    background: #07c160;
+    border-color: #07c160;
+}
+
+.message-wrapper.multi-select-mode.selected::after {
+    content: '✓';
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.message-bubble.selected {
+    opacity: 0.7;
+    transform: scale(0.98);
+}
+
+.message-bubble {
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.1s;
+}
+
+.message-wrapper.multi-select-mode .message-bubble {
+    cursor: pointer;
+}
+
+/* ==================== 多选工具栏 ==================== */
+.message-multi-select-toolbar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border-top: 1px solid #e8e8e8;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 1000;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.multi-select-toolbar-left,
+.multi-select-toolbar-right {
+    flex: 1;
+}
+
+.multi-select-toolbar-center {
+    flex: 1;
+    text-align: center;
+}
+
+.multi-select-count {
+    font-size: 15px;
+    color: #333;
+    font-weight: 500;
+}
+
+.multi-select-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.multi-select-btn.cancel-btn {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.multi-select-btn.cancel-btn:active {
+    background: #e8e8e8;
+}
+
+.multi-select-btn.delete-btn {
+    background: #ff3b30;
+    color: #fff;
+    float: right;
+}
+
+.multi-select-btn.delete-btn:disabled {
+    background: #d0d0d0;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.multi-select-btn.delete-btn:not(:disabled):active {
+    background: #d70015;
+}
+
+/* 多选模式下调整输入框位置 */
+#message-detail-page:has(.message-multi-select-toolbar) .message-input-area {
+    bottom: 60px;
+}
+
+/* ==================== 提示Toast ==================== */
+.message-toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 15px;
+    z-index: 10001;
+    display: none;
+    animation: toastFadeIn 0.2s ease-out;
+}
+
+@keyframes toastFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
 .message-header-avatar-small.default-avatar img {
     display: none;
 }
@@ -7479,344 +7693,6 @@ body.standalone-mode .keyboard-up .message-input-area {
     font-size: 16px;
     color: #333;
 }
-
-/* =================
-   日历页面样式 (Premium Pink Pro)
-   ================= */
-/* 定义局部变量范围 */
-#calendar-page {
-    --cal-bg-color: #FFFAFB; 
-    --cal-card-bg: #FFFFFF;
-    --cal-text-main: #5D5455; 
-    --cal-text-sub: #B0A6A7;
-    --cal-accent-bg: #FFF0F3; 
-    --cal-accent-dark: #D48FA3; 
-    --cal-shadow: 0 20px 60px rgba(212, 143, 163, 0.15), 0 5px 15px rgba(212, 143, 163, 0.05);
-    --cal-radius: 28px;
-    --cal-transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-/* 覆盖 wechat-page 的默认背景，使其透明以显示背后的颜色 */
-#calendar-page.wechat-page {
-    background-color: var(--cal-bg-color) !important;
-    display: none; /* 初始隐藏 */
-    justify-content: center;
-    align-items: center;
-}
-
-/* 隐藏 wechat-header，因为新日历有自己的头部导航 */
-#calendar-page .wechat-header {
-    display: none;
-}
-
-/* 新日历容器 */
-.calendar-wrapper {
-    background: var(--cal-card-bg);
-    width: 380px;
-    max-width: 90%; /* 移动端适配 */
-    height: 540px; /* 固定高度 */
-    padding: 36px;
-    border-radius: var(--cal-radius);
-    box-shadow: var(--cal-shadow);
-    position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.8);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-/* 关闭按钮 (绝对定位在卡片右上角或页面右上角) */
-.calendar-close-btn {
-    position: absolute;
-    top: 50px;
-    right: 20px;
-    width: 40px;
-    height: 40px;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 100;
-    color: var(--cal-text-sub);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-}
-
-/* --- 头部 --- */
-.cal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    flex-shrink: 0;
-}
-
-.current-date-btn {
-    background: transparent;
-    border: none;
-    font-family: 'Playfair Display', serif; /* 如果没有引入字体，会回退 */
-    font-size: 20px;
-    font-weight: 600;
-    color: var(--cal-text-main);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 12px;
-    border-radius: 12px;
-    transition: var(--cal-transition);
-}
-
-.current-date-btn:hover, .current-date-btn.active {
-    background-color: var(--cal-accent-bg);
-    color: var(--cal-accent-dark);
-}
-
-.caret-icon {
-    width: 12px;
-    height: 12px;
-    transition: transform 0.3s;
-    stroke: currentColor;
-    stroke-width: 3;
-    fill: none;
-}
-
-.current-date-btn.active .caret-icon {
-    transform: rotate(180deg);
-}
-
-.nav-btn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--cal-transition);
-    color: var(--cal-text-sub);
-}
-
-.nav-btn:hover {
-    background-color: var(--cal-accent-bg);
-    color: var(--cal-accent-dark);
-}
-
-/* --- 核心内容区 --- */
-.cal-main-content {
-    position: relative;
-    flex-grow: 1;
-}
-
-.view-layer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--cal-card-bg);
-    transition: var(--cal-transition);
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(10px) scale(0.98);
-}
-
-.view-layer.active {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0) scale(1);
-    z-index: 10;
-}
-
-/* --- 日历视图 --- */
-.weekdays {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    margin-bottom: 12px;
-}
-.weekdays span {
-    text-align: center;
-    font-size: 11px;
-    color: var(--cal-text-sub);
-    font-weight: 700;
-    letter-spacing: 1px;
-}
-.days {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 8px; 
-}
-.day {
-    aspect-ratio: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 14px;
-    cursor: pointer;
-    border-radius: 50%;
-    transition: var(--cal-transition);
-    color: var(--cal-text-main);
-}
-.day:hover { background-color: #FFFAFB; color: var(--cal-accent-dark); }
-.day.fade { color: #EEE; pointer-events: none; }
-.day.selected {
-    background-color: var(--cal-accent-bg);
-    color: var(--cal-accent-dark);
-    font-weight: 700;
-    box-shadow: 0 4px 10px rgba(255, 200, 210, 0.4);
-}
-.day.today { font-weight: 700; color: var(--cal-accent-dark); }
-.day.today::after {
-    content: ''; position: absolute; bottom: 5px;
-    width: 3px; height: 3px; border-radius: 50%; background: var(--cal-accent-dark);
-}
-.day.selected.today::after { display: none; }
-
-/* --- 选择器视图 --- */
-.selector-view {
-    display: flex;
-    gap: 16px;
-    padding-bottom: 10px;
-}
-
-.month-selector {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 1fr;
-    grid-auto-rows: min-content;
-    gap: 8px;
-    overflow-y: auto;
-    padding-right: 4px;
-}
-
-.sel-month-item {
-    padding: 10px;
-    text-align: center;
-    border-radius: 12px;
-    font-size: 14px;
-    cursor: pointer;
-    transition: var(--cal-transition);
-    border: 1px solid transparent;
-}
-
-.sel-month-item:hover {
-    border-color: var(--cal-accent-bg);
-    background: #FFFAFB;
-}
-
-.sel-month-item.selected {
-    background-color: var(--cal-accent-bg);
-    color: var(--cal-accent-dark);
-    font-weight: 700;
-}
-
-.year-selector {
-    flex: 0.6;
-    overflow-y: scroll;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    height: 100%;
-    border-left: 1px solid #FaFaFa;
-    padding-left: 10px;
-    scrollbar-width: none; 
-}
-.year-selector::-webkit-scrollbar { display: none; }
-
-.sel-year-item {
-    padding: 8px;
-    text-align: center;
-    border-radius: 8px;
-    font-size: 15px;
-    cursor: pointer;
-    transition: .2s;
-    color: var(--cal-text-sub);
-    font-family: 'Playfair Display', serif;
-}
-
-.sel-year-item:hover { color: var(--cal-text-main); }
-
-.sel-year-item.selected {
-    color: var(--cal-accent-dark);
-    font-size: 20px;
-    font-weight: 700;
-    background: rgba(255, 240, 243, 0.5);
-}
-
-/* --- 底部区域 --- */
-.cal-bottom-ui {
-    margin-top: auto; 
-}
-
-.cal-divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, #F5F5F5, transparent);
-    margin: 16px 0;
-}
-
-.cal-time-mode {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 8px;
-    margin-bottom: 12px;
-}
-
-.cal-time-mode .time-mode-title {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    color: var(--cal-text-main);
-}
-
-.cal-time-mode .time-mode-sub {
-    font-size: 11px;
-    color: var(--cal-text-sub);
-    margin-top: 2px;
-}
-
-.time-picker {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 8px;
-    margin-bottom: 20px;
-}
-
-.time-picker.disabled {
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-.time-inputs { display: flex; align-items: center; }
-.time-input {
-    background: transparent; border: none; width: 32px;
-    font-size: 26px; font-family: 'Playfair Display', serif;
-    font-weight: 500; text-align: center; color: var(--cal-text-main);
-    outline: none;
-}
-.time-input:disabled { color: var(--cal-text-sub); }
-.time-label { font-size: 11px; color: var(--cal-text-sub); font-weight: 700; letter-spacing: 1px;}
-.time-seperator { margin: 0 6px; color: var(--cal-accent-dark); font-size: 22px; padding-bottom: 4px; }
-
-.cal-confirm-btn {
-    width: 100%;
-    padding: 14px;
-    background: var(--cal-accent-bg);
-    color: var(--cal-accent-dark);
-    border: none;
-    border-radius: 18px;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: var(--cal-transition);
-}
-.cal-confirm-btn:hover { background: #FFE4E9; transform: translateY(-1px); }
-.cal-confirm-btn:active { transform: scale(0.98); }
 
 /* =================
    电话页面样式 (iPhone 风格)
