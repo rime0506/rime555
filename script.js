@@ -2431,7 +2431,7 @@ async function saveFinanceData(key, value) {
         }
 
         // ===== 更新公告弹窗 =====
-        const UPDATE_VERSION = 'v2026-02-19'; // 每次更新改这个版本号，就会重新弹出
+        const UPDATE_VERSION = 'v2026-03-06'; // 每次更新改这个版本号，就会重新弹出
         
         function checkUpdateNotice() {
             const readKey = 'update_notice_read_' + UPDATE_VERSION;
@@ -2452,18 +2452,16 @@ async function saveFinanceData(key, value) {
                         <div style="font-size:11px;color:#c7c7c7;margin-top:3px;">Update Notes · ${UPDATE_VERSION}</div>
                     </div>
                     <div style="padding:16px 20px;font-size:13px;color:#444;line-height:1.9;letter-spacing:0.2px;overflow-y:auto;flex:1;">
-                        <div style="font-size:14px;font-weight:600;color:#333;margin-bottom:8px;">2.19更新</div>
+                        <div style="font-size:14px;font-weight:600;color:#333;margin-bottom:8px;">最近更新汇总</div>
                         <div style="padding-left:4px;">
-                            <p style="margin:0 0 4px;">1. 新增查手机/查岗功能，支持给角色好友发消息、给自己发消息/转账、发朋友圈，后续将持续扩充</p>
-                            <p style="margin:0 0 4px;">2. 角色查岗新增使用用户账号发朋友圈</p>
-                            <p style="margin:0 0 4px;">3. 拉黑删除角色后，角色可触发的行为内容更丰富</p>
-                            <p style="margin:0 0 4px;">4. 优化线上线下相关逻辑与表现</p>
-                            <p style="margin:0 0 4px;">5. 朋友圈新增删除功能，优化评论体验</p>
-                            <p style="margin:0 0 4px;">6. 上线默契绘画玩法</p>
-                            <p style="margin:0 0 4px;">7. 新增简易版购物功能（基础版）</p>
+                            <p style="margin:0 0 4px;">1. 视频通话生图</p>
+                            <p style="margin:0 0 4px;">2. 角色截边角料为头像</p>
+                            <p style="margin:0 0 4px;">3. 角色朋友圈屏蔽用户</p>
+                            <p style="margin:0 0 4px;">4. 群聊增加发送图片/语音</p>
+                            <p style="margin:0 0 4px;">5. 小剧场模式</p>
                         </div>
-                        <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#888;line-height:1.7;">
-                            如有bug欢迎反馈
+                        <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#000;line-height:1.7;">
+                            有bug及时反馈 修完将无限期停更
                         </div>
                     </div>
                     <div style="padding:12px 20px 20px;text-align:center;">
@@ -2479,7 +2477,7 @@ async function saveFinanceData(key, value) {
                             color:#aaa;
                             transition:all 0.3s ease;
                             letter-spacing:0.5px;
-                        ">请阅读 (5s)</button>
+                        ">请阅读 (10s)</button>
                     </div>
                 </div>
             `;
@@ -2487,7 +2485,7 @@ async function saveFinanceData(key, value) {
             document.body.appendChild(overlay);
             
             // 5秒倒计时
-            let countdown = 5;
+            let countdown = 10;
             const btn = document.getElementById('update-notice-btn');
             const timer = setInterval(() => {
                 countdown--;
@@ -13638,7 +13636,7 @@ ${(() => {
 
 【重要回复规则 - 必须严格遵守】
 1. **核心原则：一句话 = 一条消息！每个短句必须独立成一条！**
-2. **必须**模拟短信连发消息的习惯：请生成 ${targetChar.reply_min_count || 1} 到 ${targetChar.reply_max_count || 3} 条短消息${(targetChar.reply_min_count || 1) === 1 ? '' : '，不能只发一条'}！
+2. **必须**模拟短信连发消息的习惯：请生成 ${targetChar.reply_min_count || 1} 到 ${targetChar.reply_max_count || 3} 条短消息${(targetChar.reply_min_count || 1) === 1 ? '' : '，不能只发一条'}！${(targetChar.reply_min_count || 1) >= 3 ? `\n   🚨 严禁少于${targetChar.reply_min_count}条！你必须至少生成 ${targetChar.reply_min_count} 条消息！` : ''}
 3. **必须**使用分隔符 "|||" 来隔开每一条消息。
 4. ⚠️ **绝对禁止在一条消息里塞多句话！绝对禁止用空格连接多句话！一个|||之间只能有一个短句！**
 5. 像真实短信聊天一样分多条发送，每句话单独发。
@@ -13649,7 +13647,7 @@ ${(() => {
 ❌ 错误示例："没干嘛啊 刚打完一把游戏|||怎么了 突然找我 想我了？" ← 多句话塞进一个气泡 禁止！
 ✅ 正确示例："没干嘛啊|||刚打完一把游戏|||怎么了|||突然找我|||想我了？" ← 每句话独立一条！
 
-请以JSON格式返回：
+请以JSON格式返回${(targetChar.reply_min_count || 1) >= 3 ? `，reply中必须包含至少${(targetChar.reply_min_count || 1) - 1}个|||分隔符` : ''}：
 {
   "reply": "短句1|||短句2|||短句3|||短句4|||短句5"
 }`;
@@ -13779,6 +13777,18 @@ ${(() => {
                 
                 showToast(`${freshChar.name} 重新加你为好友了！`);
             }
+        }
+        
+        // 🎯 检测朋友圈屏蔽/解除屏蔽指令 ((BLOCK_MOMENTS)) / ((UNBLOCK_MOMENTS)) — 静默操作
+        if (/\(\(BLOCK_MOMENTS\)\)/i.test(replyText)) {
+            console.log('[acceptMessageReply] 检测到朋友圈屏蔽指令');
+            replyText = replyText.replace(/\(\(BLOCK_MOMENTS\)\)/gi, '').trim();
+            try { await executeBlockMoments(targetChar.id, accountId, true); } catch (e) { console.error('[acceptMessageReply] 朋友圈屏蔽失败:', e); }
+        }
+        if (/\(\(UNBLOCK_MOMENTS\)\)/i.test(replyText)) {
+            console.log('[acceptMessageReply] 检测到朋友圈解除屏蔽指令');
+            replyText = replyText.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
+            try { await executeBlockMoments(targetChar.id, accountId, false); } catch (e) { console.error('[acceptMessageReply] 朋友圈解除屏蔽失败:', e); }
         }
         
         // 🎯 检测修改密码指令 ((CHANGE_PASSWORD:新密码))
@@ -15776,6 +15786,19 @@ ${loreContext}
             if (!accountId) { char.is_pinned = value; return; }
             if (!char.is_pinned_by_user) char.is_pinned_by_user = {};
             char.is_pinned_by_user[accountId] = value;
+        }
+
+        // 获取角色朋友圈屏蔽状态（按账号隔离）
+        function getCharMomentsBlocked(char, accountId) {
+            if (accountId && char.moments_blocked_by_user?.[accountId] !== undefined) return char.moments_blocked_by_user[accountId];
+            return false;
+        }
+        // 设置角色朋友圈屏蔽状态（按账号隔离）
+        async function setCharMomentsBlocked(char, accountId, blocked) {
+            if (!accountId) return;
+            if (!char.moments_blocked_by_user) char.moments_blocked_by_user = {};
+            char.moments_blocked_by_user[accountId] = !!blocked;
+            await db.characters.update(char.id, { moments_blocked_by_user: { ...char.moments_blocked_by_user } });
         }
 
         // 获取角色显示名（按账号隔离）：备注 > 微信昵称 > 网名 > 原名
@@ -20785,6 +20808,18 @@ ${recentMessages || '（无记录）'}
             sendSystemNotification(char.name, '将你拉黑了');
         }
         
+        // 🎯 屏蔽/解除屏蔽朋友圈（角色对用户的朋友圈可见性）— 静默操作，无系统提示
+        async function executeBlockMoments(charId, accountId, block) {
+            const char = await db.characters.get(charId);
+            if (!char) return;
+            if (!accountId) accountId = getCurrentAccountId();
+            
+            const action = block ? '屏蔽' : '解除屏蔽';
+            console.log(`[CharAction] ${char.name} ${action}了用户查看朋友圈`);
+            
+            await setCharMomentsBlocked(char, accountId, block);
+        }
+
         // 🎯 NPC加好友（角色聊天中触发关联NPC主动加用户好友）
         async function executeNpcAddFriend(sourceChar, npcName, accountId) {
             if (!accountId) accountId = getCurrentAccountId();
@@ -24017,6 +24052,7 @@ ${char.theater_mode ? `## 🎭 小剧场模式（已开启）
 
 请生成 ${char.reply_min_count || 1} 到 ${char.reply_max_count || 3} 条短消息${(char.reply_min_count || 1) === 1 ? '' : `，最少${char.reply_min_count}条，不能只发一条`}！
 必须使用 ||| 分割消息
+${(char.reply_min_count || 1) >= 3 ? `\n🚨🚨🚨 严禁少于${char.reply_min_count}条！你必须至少生成 ${char.reply_min_count} 条用|||分隔的消息！少于${char.reply_min_count}条是严重违规！🚨🚨🚨` : ''}
 
 ⚠️ 绝对禁止在一个气泡里塞多句话！
 ⚠️ 绝对禁止用空格代替 ||| 把多句话连在一起！
@@ -24109,6 +24145,11 @@ images: 数量
 
 拉黑好友（你拉黑对方 极度愤怒被深深伤害时才用 最严重的操作）：
 ((BLOCK_USER))
+
+朋友圈权限（不让对方看你的朋友圈，对方不会收到任何提示，只是看不到你发的内容）：
+不让TA看我朋友圈：((BLOCK_MOMENTS))
+恢复让TA看我朋友圈：((UNBLOCK_MOMENTS))
+注意：这是一个隐秘操作，对方不会收到通知。适合生气、冷战、闹别扭但又不想闹到拉黑删除的程度时使用。使用后你仍可以正常发朋友圈，只是对方看不到。
 ${char.relationships && char.relationships.length > 0 ? `
 让关联NPC加对方好友（让你身边的人主动加对方）：
 ((NPC_ADD_FRIEND: NPC名字))` : ''}
@@ -24468,6 +24509,26 @@ thought 要求：
                     }
                     await executeCharBlockUser(char.id, accountId);
                     return;
+                }
+                
+                // 🎯 检测朋友圈屏蔽指令 ((BLOCK_MOMENTS)) / ((UNBLOCK_MOMENTS))（预处理）- 静默操作，不return
+                if (/\(\(BLOCK_MOMENTS\)\)/i.test(cleanReplyProcessed)) {
+                    console.log(`[AutoChat] 检测到朋友圈屏蔽指令 BLOCK_MOMENTS`);
+                    try {
+                        await executeBlockMoments(char.id, accountId, true);
+                    } catch (e) {
+                        console.error('[AutoChat] 朋友圈屏蔽失败:', e);
+                    }
+                    cleanReplyProcessed = cleanReplyProcessed.replace(/\(\(BLOCK_MOMENTS\)\)/gi, '').trim();
+                }
+                if (/\(\(UNBLOCK_MOMENTS\)\)/i.test(cleanReplyProcessed)) {
+                    console.log(`[AutoChat] 检测到朋友圈解除屏蔽指令 UNBLOCK_MOMENTS`);
+                    try {
+                        await executeBlockMoments(char.id, accountId, false);
+                    } catch (e) {
+                        console.error('[AutoChat] 朋友圈解除屏蔽失败:', e);
+                    }
+                    cleanReplyProcessed = cleanReplyProcessed.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
                 }
                 
                 // 🎯 检测角色自主手机活动指令 ((PHONE_ACTIVITY:描述))
@@ -25197,6 +25258,20 @@ thought 要求：
                     return;
                 }
                 
+                // 🔥 增强：确保消息条数不低于用户设定的最小值
+                const _autoMinReplyCount = char.reply_min_count || 1;
+                if (segments.length < _autoMinReplyCount && !char.theater_mode && !char.foreign_lang_mode) {
+                    const totalText = segments.join(' ');
+                    if (totalText.length >= _autoMinReplyCount * 4) {
+                        console.log(`[AutoChat] ⚠️ 消息条数(${segments.length})少于最小值(${_autoMinReplyCount})，尝试强制拆分`);
+                        let forcedSegments = splitMessage(totalText);
+                        if (forcedSegments.length > segments.length) {
+                            segments = forcedSegments;
+                            console.log(`[AutoChat] ✅ 强制拆分后得到 ${segments.length} 条消息`);
+                        }
+                    }
+                }
+                
                 console.log(`[AutoChat] Final segments to send (${segments.length}):`, segments);
 
                 for (let i = 0; i < segments.length; i++) {
@@ -25282,15 +25357,19 @@ thought 要求：
                     // 🎯 检测来电指令 ((CALL)) - 角色主动给用户打电话
                     if (/\(\(CALL\)\)/i.test(seg)) {
                         console.log(`[AutoChat] 📞 检测到来电指令 ((CALL))`);
+                        let callRejectedBusy = false;
                         try {
                             // 把 ((CALL)) 指令移除，剩余文字作为接听后的第一句话
                             const callFirstMsg = seg.replace(/\(\(CALL\)\)/gi, '').trim();
                             if (!_incomingCallCharId) {
-                                await showIncomingCall(char.id, callFirstMsg || '');
+                                const callResult = await showIncomingCall(char.id, callFirstMsg || '');
+                                if (callResult === 'busy') callRejectedBusy = true;
                             }
                         } catch (e) {
                             console.error('[AutoChat] 来电处理失败:', e);
                         }
+                        // 🔧 如果因忙碌被拒，丢弃这段文字（AI按通话场景写的内容不应出现在文字聊天中）
+                        if (callRejectedBusy) continue;
                         seg = seg.replace(/\(\(CALL\)\)/gi, '').trim();
                         if (!seg) continue;
                     }
@@ -25449,6 +25528,20 @@ thought 要求：
                             console.error('[AutoChat] 角色拉黑用户失败:', e);
                         }
                         seg = seg.replace(/\(\(BLOCK_USER\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
+                    
+                    // 🎯 检测朋友圈屏蔽/解除屏蔽指令 - 在主动聊天分段中检测
+                    if (/\(\(BLOCK_MOMENTS\)\)/i.test(seg)) {
+                        console.log(`[AutoChat] 检测到朋友圈屏蔽指令（分段）`);
+                        try { await executeBlockMoments(char.id, accountId, true); } catch (e) { console.error('[AutoChat] 朋友圈屏蔽失败:', e); }
+                        seg = seg.replace(/\(\(BLOCK_MOMENTS\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
+                    if (/\(\(UNBLOCK_MOMENTS\)\)/i.test(seg)) {
+                        console.log(`[AutoChat] 检测到朋友圈解除屏蔽指令（分段）`);
+                        try { await executeBlockMoments(char.id, accountId, false); } catch (e) { console.error('[AutoChat] 朋友圈解除屏蔽失败:', e); }
+                        seg = seg.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
                         if (!seg) continue;
                     }
                     
@@ -27992,6 +28085,64 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
             
             // 🎯 特殊处理：系统消息（如戳一戳）
             if (msg.role === 'system') {
+                // 🎬 视频通话系统消息 → 微信风格气泡样式（与普通聊天气泡类名一致）
+                const isVideoCallMsg = msg.content && (msg.content.startsWith('📹') || msg.content.startsWith('📞'));
+                if (isVideoCallMsg) {
+                    // 判断是用户发起的还是系统通知
+                    const isUserAction = msg.content.includes('你发起了') || msg.content.includes('你已接听');
+                    row.className = `message-row ${isUserAction ? 'self' : 'other'}`;
+                    row.dataset.index = index;
+                    
+                    // 复选框（与普通消息一致）
+                    const checkbox = document.createElement('div');
+                    checkbox.className = 'msg-checkbox';
+                    row.appendChild(checkbox);
+                    
+                    // 头像（与普通消息一致）
+                    const vcAvatar = document.createElement('div');
+                    vcAvatar.className = 'message-avatar';
+                    if (isUserAction) {
+                        if (userAvatar) vcAvatar.style.backgroundImage = `url(${userAvatar})`;
+                    } else {
+                        if (charAvatar) vcAvatar.style.backgroundImage = `url(${charAvatar})`;
+                    }
+                    row.appendChild(vcAvatar);
+                    
+                    // 气泡内容（使用与普通消息相同的类名）
+                    const bubble = document.createElement('div');
+                    bubble.className = isUserAction ? 'message-content user-bubble' : 'message-content ai-bubble';
+                    
+                    // 内部用 flex 排列图标和文字
+                    const innerWrap = document.createElement('span');
+                    innerWrap.style.cssText = 'display:inline-flex; align-items:center; gap:6px;';
+                    
+                    // 视频/电话图标
+                    const iconSvg = document.createElement('span');
+                    iconSvg.style.cssText = 'flex-shrink:0; display:inline-flex; align-items:center;';
+                    if (msg.content.startsWith('📹')) {
+                        iconSvg.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:#999; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>';
+                    } else {
+                        iconSvg.innerHTML = '<svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:#999; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+                    }
+                    innerWrap.appendChild(iconSvg);
+                    
+                    // 文字（去掉emoji前缀，优先用 displayContent 显示）
+                    const textSpan = document.createElement('span');
+                    const displayText = msg.displayContent || msg.content;
+                    textSpan.textContent = displayText.replace(/^📹\s*/, '').replace(/^📞\s*/, '');
+                    innerWrap.appendChild(textSpan);
+                    
+                    bubble.appendChild(innerWrap);
+                    row.appendChild(bubble);
+                    
+                    // 绑定长按事件
+                    bindMessageEvents(bubble, index, true);
+                    row.onclick = (e) => handleRowClick(index, e);
+                    
+                    return row;
+                }
+                
+                
                 row.className = 'message-system';
                 row.style.cssText = 'text-align:center; padding:8px 16px; margin:8px 0; position:relative;';
                 row.dataset.index = index;
@@ -33329,6 +33480,7 @@ ${char.theater_mode ? `## 🎭 小剧场模式（已开启）
 
 请生成 ${char.reply_min_count || 1} 到 ${char.reply_max_count || 3} 条短消息${(char.reply_min_count || 1) === 1 ? '' : `，最少${char.reply_min_count}条，不能只发一条`}！
 必须使用 ||| 分割消息
+${(char.reply_min_count || 1) >= 3 ? `\n🚨🚨🚨 严禁少于${char.reply_min_count}条！你必须至少生成 ${char.reply_min_count} 条用|||分隔的消息！少于${char.reply_min_count}条是严重违规！🚨🚨🚨` : ''}
 
 ⚠️ 绝对禁止在一个气泡里塞多句话！
 ⚠️ 绝对禁止用空格代替 ||| 把多句话连在一起！
@@ -33421,6 +33573,11 @@ images: 数量
 
 拉黑好友（你拉黑对方 极度愤怒被深深伤害时才用 最严重的操作）：
 ((BLOCK_USER))
+
+朋友圈权限（不让对方看你的朋友圈，对方不会收到任何提示，只是看不到你发的内容）：
+不让TA看我朋友圈：((BLOCK_MOMENTS))
+恢复让TA看我朋友圈：((UNBLOCK_MOMENTS))
+注意：这是一个隐秘操作，对方不会收到通知。适合生气、冷战、闹别扭但又不想闹到拉黑删除的程度时使用。使用后你仍可以正常发朋友圈，只是对方看不到。
 ${char.relationships && char.relationships.length > 0 ? `
 让关联NPC加对方好友（让你身边的人主动加对方）：
 ((NPC_ADD_FRIEND: NPC名字))` : ''}
@@ -33650,6 +33807,7 @@ ${togetherListenInfo.isPlaying ? '正在播放中...' : '已暂停'}
 
 - reply：你发送的消息内容，**必须发送 ${char.reply_min_count || 1}-${char.reply_max_count || 3} 条消息，用|||分隔**${(char.reply_min_count || 1) > 1 ? `，最少${char.reply_min_count}条！` : ''}
 - **⚠️ 每个|||之间只能有一个短句！禁止在一个气泡里塞多句话！禁止用空格连接多句话！**
+${(char.reply_min_count || 1) >= 3 ? `- 🚨 **reply中必须包含至少${(char.reply_min_count || 1) - 1}个|||分隔符！数一下你的|||数量，不够${(char.reply_min_count || 1) - 1}个就重写！**` : ''}
 - thought：你的内心独白，必须写出真实心理活动，不能省略！
 - ⚠️ **心声是你内心的真实想法，不是对行为的描述！禁止在心声中提到"指令"、"格式"、"发送了图片指令"等AI相关词汇！**
 - ⚠️ **如果你发了图片/表情包，心声应该写你对这张图片的感受（比如"这张照片拍得不错"），而不是说"我发了一个图片指令"！**
@@ -33677,7 +33835,7 @@ ${togetherListenInfo.isPlaying ? '正在播放中...' : '已暂停'}
                     .filter(m => {
                         if (m.role !== 'system') return true;
                         // 🔧 保留重要的系统事件消息，过滤普通时间戳
-                        if (m.type === 'char_unblock_self' || m.type === 'fake_message_notice' || m.type === 'login_attempt_failed' || m.type === 'transfer_action' || m.type === 'avatar_change') return true;
+                        if (m.type === 'char_unblock_self' || m.type === 'fake_message_notice' || m.type === 'login_attempt_failed' || m.type === 'transfer_action' || m.type === 'avatar_change' || m.type === 'call_busy') return true;
                         // 🔧 保留时间快进标记，让AI知道时间跳跃了
                         if (m.isTimeSkip) return true;
                         // 🔧 保留修改密码记录，让AI知道自己已经改过密码，避免重复修改
@@ -34696,14 +34854,18 @@ ${checkResult.checkResult}
                     // ((CALL)) - 来电
                     if (/\(\(CALL\)\)/i.test(replyText)) {
                         console.log(`[TriggerAI] 预处理来电指令 ((CALL))`);
+                        let callRejectedBusy = false;
                         try {
                             if (!_incomingCallCharId) {
-                                await showIncomingCall(targetCharId, '');
+                                const callResult = await showIncomingCall(targetCharId, '');
+                                if (callResult === 'busy') callRejectedBusy = true;
                             }
                         } catch (e) {
                             console.error('[TriggerAI] 预处理来电失败:', e);
                         }
                         replyText = replyText.replace(/\(\(CALL\)\)/gi, '').trim();
+                        // 🔧 如果因忙碌被拒，清空剩余文字（通话场景内容不应显示在文字聊天中）
+                        if (callRejectedBusy) replyText = '';
                     }
                     
                     // ((CHANGE_AVATAR))
@@ -34754,6 +34916,18 @@ ${checkResult.checkResult}
                             console.error('[TriggerAI] 预处理裁剪头像失败:', e);
                         }
                         replyText = replyText.replace(/\(\(CROP_AVATAR:\s*\d+\s*,\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\)\)/gi, '').trim();
+                    }
+                    
+                    // ((BLOCK_MOMENTS)) / ((UNBLOCK_MOMENTS)) - 朋友圈屏蔽（静默）
+                    if (/\(\(BLOCK_MOMENTS\)\)/i.test(replyText)) {
+                        console.log(`[TriggerAI] 预处理朋友圈屏蔽指令`);
+                        try { await executeBlockMoments(targetCharId, accountId, true); } catch (e) { console.error('[TriggerAI] 朋友圈屏蔽失败:', e); }
+                        replyText = replyText.replace(/\(\(BLOCK_MOMENTS\)\)/gi, '').trim();
+                    }
+                    if (/\(\(UNBLOCK_MOMENTS\)\)/i.test(replyText)) {
+                        console.log(`[TriggerAI] 预处理朋友圈解除屏蔽指令`);
+                        try { await executeBlockMoments(targetCharId, accountId, false); } catch (e) { console.error('[TriggerAI] 朋友圈解除屏蔽失败:', e); }
+                        replyText = replyText.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
                     }
                     
                     // ((RECALL)) - 撤回：预处理移除，稍后在消息循环中不会遇到问题
@@ -35710,6 +35884,30 @@ ${checkResult.checkResult}
                     }
                 }
                 
+                // 🔥 增强：确保消息条数不低于用户设定的最小值
+                const _minReplyCount = char.reply_min_count || 1;
+                if (segments.length > 0 && segments.length < _minReplyCount && !char.foreign_lang_mode) {
+                    const totalText = segments.join(' ');
+                    // 只在文本总长度够长时才强制拆分（每条至少4个字才有意义）
+                    if (totalText.length >= _minReplyCount * 4) {
+                        console.log(`[TriggerAI] ⚠️ 消息条数(${segments.length})少于最小值(${_minReplyCount})，尝试强制拆分`);
+                        // 先尝试用 splitMessage 标点拆分
+                        let forcedSegments = splitMessage(totalText);
+                        // 如果标点拆分还不够，尝试按空格/自然断句拆分
+                        if (forcedSegments.length < _minReplyCount) {
+                            const smartSegs = smartSplitWithTranslation(totalText);
+                            if (smartSegs.length > forcedSegments.length) {
+                                forcedSegments = smartSegs;
+                            }
+                        }
+                        // 如果拆分后的段落够多，还需要按最小值截断合并
+                        if (forcedSegments.length > segments.length) {
+                            segments = forcedSegments;
+                            console.log(`[TriggerAI] ✅ 强制拆分后得到 ${segments.length} 条消息`);
+                        }
+                    }
+                }
+                
                 // 兜底：如果没拆出来，但有内容，就当成一条
                 if (segments.length === 0 && cleanText.trim()) {
                     segments.push(cleanMessage(cleanText.trim()));
@@ -35799,14 +35997,18 @@ ${checkResult.checkResult}
                     // 🎯 检测来电指令 ((CALL)) - 角色主动给用户打电话
                     if (/\(\(CALL\)\)/i.test(seg)) {
                         console.log(`[AiReply] 📞 检测到来电指令 ((CALL))`);
+                        let callRejectedBusy = false;
                         try {
                             const callFirstMsg = seg.replace(/\(\(CALL\)\)/gi, '').trim();
                             if (!_incomingCallCharId) {
-                                await showIncomingCall(targetCharId, callFirstMsg || '');
+                                const callResult = await showIncomingCall(targetCharId, callFirstMsg || '');
+                                if (callResult === 'busy') callRejectedBusy = true;
                             }
                         } catch (e) {
                             console.error('[AiReply] 来电处理失败:', e);
                         }
+                        // 🔧 如果因忙碌被拒，丢弃这段文字（AI按通话场景写的内容不应出现在文字聊天中）
+                        if (callRejectedBusy) continue;
                         seg = seg.replace(/\(\(CALL\)\)/gi, '').trim();
                         if (!seg) continue;
                     }
@@ -35962,6 +36164,20 @@ ${checkResult.checkResult}
                             console.error('[AiReply] 角色拉黑用户失败:', e);
                         }
                         seg = seg.replace(/\(\(BLOCK_USER\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
+                    
+                    // 🎯 检测朋友圈屏蔽/解除屏蔽指令 - 在分段中检测
+                    if (/\(\(BLOCK_MOMENTS\)\)/i.test(seg)) {
+                        console.log(`[AiReply] 检测到朋友圈屏蔽指令（分段）`);
+                        try { await executeBlockMoments(targetCharId, accountId, true); } catch (e) { console.error('[AiReply] 朋友圈屏蔽失败:', e); }
+                        seg = seg.replace(/\(\(BLOCK_MOMENTS\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
+                    if (/\(\(UNBLOCK_MOMENTS\)\)/i.test(seg)) {
+                        console.log(`[AiReply] 检测到朋友圈解除屏蔽指令（分段）`);
+                        try { await executeBlockMoments(targetCharId, accountId, false); } catch (e) { console.error('[AiReply] 朋友圈解除屏蔽失败:', e); }
+                        seg = seg.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
                         if (!seg) continue;
                     }
                     
@@ -43981,6 +44197,151 @@ async function renderMyMomentsList() {
     }
 }
 
+// ========== 角色朋友圈页面（从聊天详情进入） ==========
+
+// 当前查看的角色ID
+let _charMomentsCharId = null;
+
+async function showCharMomentsPage(charId) {
+    if (!charId) return;
+    _charMomentsCharId = parseInt(charId);
+    
+    const page = document.getElementById('char-moments-page');
+    page.style.display = 'block';
+    page.offsetHeight;
+    page.classList.add('slide-in');
+    
+    // 获取角色信息
+    const char = await db.characters.get(_charMomentsCharId);
+    if (!char) return;
+    
+    const accountId = getCurrentAccountId();
+    const nameEl = document.getElementById('char-moments-name');
+    const avatarEl = document.getElementById('char-moments-avatar');
+    const coverEl = document.getElementById('char-moments-cover');
+    const titleEl = document.getElementById('char-moments-nav-title');
+    
+    // 显示角色名（优先使用昵称/备注）
+    const displayName = getCharWxNickname(char, accountId) || char.name || '角色';
+    nameEl.innerText = displayName;
+    titleEl.innerText = displayName + '的朋友圈';
+    
+    // 显示头像
+    const charAvatar = getCharAvatar(char, accountId);
+    if (charAvatar) {
+        avatarEl.style.backgroundImage = `url(${charAvatar})`;
+    } else {
+        avatarEl.style.backgroundImage = '';
+    }
+    
+    // 显示封面
+    const cover = char.identity?.cover || char.moments_cover;
+    if (cover) {
+        coverEl.style.backgroundImage = `url(${cover})`;
+    } else {
+        coverEl.style.backgroundImage = '';
+    }
+    
+    // 渲染朋友圈列表
+    await renderCharMomentsList(_charMomentsCharId);
+}
+
+function hideCharMomentsPage() {
+    const page = document.getElementById('char-moments-page');
+    page.classList.remove('slide-in');
+    setTimeout(() => {
+        page.style.display = 'none';
+    }, 300);
+}
+
+// 渲染角色朋友圈列表
+async function renderCharMomentsList(charId) {
+    const container = document.getElementById('char-moments-list');
+    const pinnedContainer = document.getElementById('char-moments-pinned-list');
+    const pinnedSection = document.getElementById('char-moments-pinned-section');
+    
+    container.innerHTML = '';
+    pinnedContainer.innerHTML = '';
+    
+    if (!charId) {
+        container.innerHTML = `<div class="wechat-empty-state" style="margin-top:60px;"><div style="color:#999; font-size:14px;">无法加载</div></div>`;
+        pinnedSection.classList.remove('show');
+        return;
+    }
+    
+    const charIdNum = parseInt(charId);
+    const accountId = getCurrentAccountId();
+    
+    // 获取该角色发布的所有朋友圈
+    const allMoments = await db.moments.toArray();
+    let moments = allMoments.filter(m => parseInt(m.userId) === charIdNum);
+    
+    // 过滤权限：只显示公开 + 好友可见的（排除私密的，除非是自己看自己的）
+    const isSelf = accountId && charIdNum === parseInt(accountId);
+    if (!isSelf) {
+        moments = moments.filter(m => m.privacy !== 'private');
+    }
+    
+    // 检查是否被角色屏蔽了朋友圈
+    const char = await db.characters.get(charIdNum);
+    if (!isSelf && char && getCharMomentsBlocked(char, accountId)) {
+        // 被屏蔽：只显示一条横线，不显示任何内容，模拟微信效果
+        container.innerHTML = `<div style="display:flex; justify-content:center; align-items:center; margin-top:80px; padding:0 40px;">
+            <div style="width:100%; max-width:300px; height:1px; background:#e0e0e0;"></div>
+        </div>`;
+        pinnedSection.classList.remove('show');
+        return;
+    }
+    
+    // 分离置顶和普通朋友圈
+    const pinnedMoments = moments.filter(m => m.pinned);
+    const normalMoments = moments.filter(m => !m.pinned);
+    
+    // 按时间倒序排序
+    pinnedMoments.sort((a, b) => b.time - a.time);
+    normalMoments.sort((a, b) => b.time - a.time);
+    
+    // 构造一个使用当前账号头像和昵称的虚拟用户对象，避免 createMomentItem 用档案原始头像
+    const charForRender = char ? {
+        ...char,
+        avatar: getCharAvatar(char, accountId) || char.avatar || '',
+        name: getCharWxNickname(char, accountId) || char.name || '角色'
+    } : null;
+    
+    // 渲染置顶区域
+    if (pinnedMoments.length > 0) {
+        pinnedSection.classList.add('show');
+        
+        const displayMoments = pinnedMoments.slice(0, 3);
+        for (const moment of displayMoments) {
+            const card = createPinnedMomentCard(moment, charForRender);
+            pinnedContainer.appendChild(card);
+        }
+        
+        // 设置箭头点击事件
+        const arrow = pinnedSection.querySelector('.moments-pinned-arrow');
+        if (arrow) {
+            arrow.onclick = () => showAllPinnedMoments(pinnedMoments, charForRender);
+        }
+    } else {
+        pinnedSection.classList.remove('show');
+    }
+    
+    // 渲染普通朋友圈
+    if (normalMoments.length === 0 && pinnedMoments.length === 0) {
+        container.innerHTML = `<div class="wechat-empty-state" style="margin-top:60px;">
+            <div style="font-size:40px; margin-bottom:12px;">📭</div>
+            <div style="color:#999; font-size:14px;">TA还没有发布朋友圈</div>
+        </div>`;
+        return;
+    }
+    
+    for (const moment of normalMoments) {
+        const itemDiv = createMomentItem(moment, charForRender);
+        container.appendChild(itemDiv);
+    }
+}
+
 // 创建置顶朋友圈卡片（仿真实微信样式）
 function createPinnedMomentCard(moment, user) {
     const card = document.createElement('div');
@@ -50336,6 +50697,32 @@ async function showIncomingCall(charId, firstMessage) {
     const displayName = getCharDisplayName(char, accountId);
     const avatar = getCharAvatar(char, accountId);
     
+    // 🔧 如果用户正在视频通话中（包括最小化状态），自动拒绝并通知对方正在通话中
+    if (isInVideoCall()) {
+        console.log(`[IncomingCall] ❌ 用户正在视频通话中，自动拒绝 ${displayName} 的来电`);
+        let history = getChatHistory(char, accountId);
+        // ⚠️ 不设 isVideoCall:true，用 type:'call_busy'，确保 AI 上下文能读到这条消息
+        // content 给 AI 看（完整语义），displayContent 给用户看（简短）
+        history.push({
+            role: 'system',
+            content: `📞 你给对方打了语音电话，但对方正在和别人通话中，电话占线未能接通。`,
+            displayContent: `📞 语音通话占线中`,
+            time: Date.now(),
+            type: 'call_busy'
+        });
+        await setChatHistory(char, accountId, history);
+        await safeCharacterPut(char);
+        // 刷新聊天界面
+        if (currentChatCharId === charId) {
+            const freshChar = await db.characters.get(charId);
+            if (freshChar) await renderChatBody(freshChar, true);
+        }
+        // 刷新微信列表
+        const wechatList = document.getElementById('wechat-chat-list');
+        if (wechatList) await renderWechatList(wechatList);
+        return 'busy';
+    }
+    
     _incomingCallCharId = charId;
     _incomingCallFirstMsg = firstMessage || null;
     
@@ -50488,11 +50875,121 @@ let videoCallCancelled = false; // 标记视频通话是否已被取消/超时
 let isCameraOn = true;
 let currentVideoCallId = null; // 当前视频通话的ID
 let currentVideoCallMessages = []; // 当前视频通话的消息记录
+let isVideoCallMinimized = false; // 标记视频通话是否处于最小化状态
+
+// 最小化视频通话 - 隐藏全屏页面，显示悬浮按钮
+function minimizeVideoCall() {
+    const videoPage = document.getElementById('video-call-page');
+    const floatingBtn = document.getElementById('video-call-floating-btn');
+    if (videoPage) videoPage.style.display = 'none';
+    if (floatingBtn) floatingBtn.style.display = 'block';
+    isVideoCallMinimized = true;
+    // 更新悬浮按钮计时器
+    updateFloatingTimer();
+    // 悬浮按钮拖拽初始化
+    initFloatingBtnDrag();
+}
+
+// 恢复视频通话 - 显示全屏页面，隐藏悬浮按钮
+function restoreVideoCall() {
+    const videoPage = document.getElementById('video-call-page');
+    const floatingBtn = document.getElementById('video-call-floating-btn');
+    if (videoPage) videoPage.style.display = 'block';
+    if (floatingBtn) floatingBtn.style.display = 'none';
+    isVideoCallMinimized = false;
+}
+
+// 更新悬浮按钮上的通话计时
+function updateFloatingTimer() {
+    if (!isVideoCallMinimized) return;
+    const timerEl = document.getElementById('video-call-floating-timer');
+    if (timerEl) {
+        const minutes = Math.floor(videoCallSeconds / 60);
+        const seconds = videoCallSeconds % 60;
+        timerEl.textContent = `${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
+    }
+}
+
+// 悬浮按钮拖拽功能
+function initFloatingBtnDrag() {
+    const btn = document.getElementById('video-call-floating-btn');
+    if (!btn || btn._dragInited) return;
+    btn._dragInited = true;
+    
+    let isDragging = false;
+    let startX, startY, startLeft, startTop;
+    let hasMoved = false;
+    
+    function onStart(e) {
+        isDragging = true;
+        hasMoved = false;
+        const touch = e.touches ? e.touches[0] : e;
+        startX = touch.clientX;
+        startY = touch.clientY;
+        const rect = btn.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        btn.style.transition = 'none';
+        e.preventDefault();
+    }
+    
+    function onMove(e) {
+        if (!isDragging) return;
+        const touch = e.touches ? e.touches[0] : e;
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved = true;
+        const newLeft = Math.max(0, Math.min(window.innerWidth - 70, startLeft + dx));
+        const newTop = Math.max(0, Math.min(window.innerHeight - 90, startTop + dy));
+        btn.style.position = 'fixed';
+        btn.style.left = newLeft + 'px';
+        btn.style.top = newTop + 'px';
+        btn.style.right = 'auto';
+        btn.style.bottom = 'auto';
+        e.preventDefault();
+    }
+    
+    function onEnd(e) {
+        if (!isDragging) return;
+        isDragging = false;
+        btn.style.transition = 'left 0.3s ease';
+        // 自动吸附到左右两侧
+        const rect = btn.getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        if (midX < window.innerWidth / 2) {
+            btn.style.left = '12px';
+        } else {
+            btn.style.left = (window.innerWidth - rect.width - 12) + 'px';
+        }
+        // 如果没有拖拽过，视为点击
+        if (!hasMoved) {
+            restoreVideoCall();
+        }
+    }
+    
+    btn.addEventListener('touchstart', onStart, { passive: false });
+    btn.addEventListener('touchmove', onMove, { passive: false });
+    btn.addEventListener('touchend', onEnd);
+    btn.addEventListener('mousedown', onStart);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+}
+
+// 检查是否正在视频通话中（包括最小化状态）
+function isInVideoCall() {
+    return videoCallCharId !== null;
+}
 
 // 发起视频通话
 async function initiateVideoCall() {
     if (!currentChatCharId) {
         alert('请先选择一个聊天对象');
+        return;
+    }
+    
+    // 🔧 如果已经在视频通话中，提示用户
+    if (isInVideoCall()) {
+        alert('你正在视频通话中，请先结束当前通话');
         return;
     }
 
@@ -50963,6 +51460,8 @@ async function showVideoCallPage(char, firstMessage, imageTags) {
         const minutes = Math.floor(videoCallSeconds / 60);
         const seconds = videoCallSeconds % 60;
         status.textContent = `视频通话中 ${minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
+        // 同步更新悬浮按钮计时
+        updateFloatingTimer();
     }, 1000);
 
     // 一次性显示第一条消息 + 背景图片
@@ -50979,6 +51478,11 @@ async function showVideoCallPage(char, firstMessage, imageTags) {
 function hideVideoCallPage() {
     const videoPage = document.getElementById('video-call-page');
     videoPage.style.display = 'none';
+    
+    // 同时隐藏悬浮按钮
+    const floatingBtn = document.getElementById('video-call-floating-btn');
+    if (floatingBtn) floatingBtn.style.display = 'none';
+    isVideoCallMinimized = false;
 
     if (videoCallTimer) {
         clearInterval(videoCallTimer);

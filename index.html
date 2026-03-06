@@ -2570,9 +2570,16 @@
                 <div class="detail-avatar" id="detail-char-avatar" onclick="document.getElementById('detail-avatar-input').click()">
                     <div style="position:absolute; bottom:0; right:0; background:rgba(0,0,0,0.5); color:#fff; font-size:10px; padding:2px 4px; border-radius:4px;">更换</div>
                 </div>
-                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px;">
-                    <div style="font-size:18px; font-weight:600; color:#262626; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="detail-char-nickname">昵称</div>
+                <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; cursor:pointer;" onclick="showCharMomentsPage(currentChatCharId)">
+                    <div style="font-size:18px; font-weight:600; color:#262626; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:6px;" id="detail-char-nickname-wrap">
+                        <span id="detail-char-nickname">昵称</span>
+                        <svg viewBox="0 0 24 24" style="width:14px; height:14px; flex-shrink:0; stroke:#999; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </div>
                     <div style="font-size:13px; color:#999; line-height:1.4; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;" id="detail-char-signature">这个人什么也没有留下</div>
+                    <div style="font-size:11px; color:#b0b0b0; display:flex; align-items:center; gap:4px;">
+                        <svg viewBox="0 0 24 24" style="width:12px; height:12px; stroke:#b0b0b0; fill:none; stroke-width:2;"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                        <span>查看TA的朋友圈</span>
+                    </div>
                 </div>
             </div>
 
@@ -4309,8 +4316,46 @@
         </div>
     </div>
 
+    <!-- 角色朋友圈页面（从聊天详情进入） -->
+    <div class="wechat-page" id="char-moments-page" style="background:#ffffff; overflow-y:auto; display:none; z-index:215;">
+        <!-- 导航栏 -->
+        <div class="moments-nav-bar" style="position:fixed; opacity:1;">
+            <div class="back-btn" onclick="hideCharMomentsPage()" style="background:none; color:#fff; width:32px; height:32px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));">
+                <svg class="svg-icon" viewBox="0 0 24 24" style="width:24px; height:24px; stroke-width:2.5;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </div>
+            <div class="moments-nav-title" id="char-moments-nav-title" style="opacity:1;">TA的朋友圈</div>
+            <div style="width:32px;"></div>
+        </div>
+
+        <!-- 封面区域 -->
+        <div class="moments-cover-area" id="char-moments-cover" style="cursor:default;">
+            <div class="moments-user-info">
+                <div class="moments-user-name" id="char-moments-name">角色</div>
+                <div class="moments-user-avatar" id="char-moments-avatar"></div>
+            </div>
+        </div>
+
+        <!-- 置顶区域 -->
+        <div id="char-moments-pinned-section" class="moments-pinned-section">
+            <div class="moments-pinned-label">置顶</div>
+            <div class="moments-pinned-scroll">
+                <div id="char-moments-pinned-list" class="moments-pinned-list">
+                    <!-- 置顶的朋友圈卡片 -->
+                </div>
+                <div class="moments-pinned-arrow">›</div>
+            </div>
+        </div>
+
+        <!-- 普通内容列表 -->
+        <div class="moments-list" id="char-moments-list">
+            <div class="wechat-empty-state" style="margin-top:60px;">
+                <div style="color:#999; font-size:14px;">加载中...</div>
+            </div>
+        </div>
+    </div>
+
     <!-- 所有置顶朋友圈页面 -->
-    <div class="wechat-page" id="all-pinned-moments-page" style="display:none; z-index:205;">
+    <div class="wechat-page" id="all-pinned-moments-page" style="display:none; z-index:220;">
         <div class="wechat-header">
             <div class="back-btn" onclick="hideAllPinnedMoments()" style="margin:0; background:none; font-size:16px; color:#333; width:60px;">
                 <svg class="svg-icon" viewBox="0 0 24 24" style="width:24px; height:24px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -4323,7 +4368,7 @@
     </div>
 
     <!-- 朋友圈详情页面 -->
-    <div class="wechat-page" id="moment-detail-page" style="background:#f5f5f5; display:none; z-index:206;">
+    <div class="wechat-page" id="moment-detail-page" style="background:#f5f5f5; display:none; z-index:225;">
         <div class="wechat-header" style="background:#fff;">
             <div class="back-btn" onclick="hideMomentDetail()">
                 <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -5159,6 +5204,12 @@
                             视频通话中
                         </div>
                     </div>
+                    <!-- 最小化按钮 -->
+                    <button onclick="minimizeVideoCall()" style="width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; backdrop-filter: blur(10px); flex-shrink: 0;">
+                        <svg viewBox="0 0 24 24" style="width: 18px; height: 18px; stroke: #FFFFFF; fill: none; stroke-width: 2; stroke-linecap: round;">
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
                 </div>
 
                 <!-- 消息显示区域 -->
@@ -5193,6 +5244,21 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- 视频通话最小化悬浮按钮 -->
+    <div id="video-call-floating-btn" style="display:none; position:fixed; bottom:100px; right:16px; z-index:9998; cursor:pointer; user-select:none; touch-action:none;">
+        <div style="width:56px; height:56px; border-radius:28px; background:#fff; box-shadow:0 4px 20px rgba(0,0,0,0.12), 0 0 1px rgba(0,0,0,0.08); display:flex; align-items:center; justify-content:center; position:relative; border:1px solid #f0f0f0; transition: transform 0.2s ease;">
+            <!-- 绿色脉冲点 -->
+            <span style="position:absolute; top:6px; right:6px; width:10px; height:10px; border-radius:50%; background:#4ade80; border:2px solid #fff; animation: blink 1.5s infinite;"></span>
+            <!-- 视频通话图标 -->
+            <svg viewBox="0 0 24 24" style="width:24px; height:24px; fill:none; stroke:#333; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;">
+                <path d="M23 7l-7 5 7 5V7z"></path>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+        </div>
+        <!-- 通话计时器 -->
+        <div id="video-call-floating-timer" style="text-align:center; margin-top:4px; font-size:11px; color:#999; font-weight:500; white-space:nowrap;">0:00</div>
     </div>
 
     <!-- 视频通话记录列表页面 -->
