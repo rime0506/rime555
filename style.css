@@ -1326,6 +1326,7 @@ body {
         .api-error-toast.show {
             opacity: 1;
             transform: translate(-50%, -50%) scale(1);
+            pointer-events: auto;
         }
         .api-error-toast .error-icon {
             font-size: 32px;
