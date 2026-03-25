@@ -388,10 +388,13 @@ body {
             align-items: center;
             z-index: 20;
             flex-shrink: 0;
-            /* 🔧 用 env(safe-area-inset-bottom) 动态避开 iOS 底部小白条 */
-            margin: 0 auto env(safe-area-inset-bottom, 0px);
+            /* 🔧 底部间距：浏览器模式默认 0，PWA 独立模式下用 env() 避开 Home Indicator */
+            margin: 0 auto 0;
             align-self: center;
             overflow: hidden;
+        }
+        body.standalone-mode .dock {
+            margin-bottom: env(safe-area-inset-bottom, 0px);
         }
         .dock-icon .icon {
             width: 56px;
@@ -490,7 +493,10 @@ body {
             overflow-y: auto;
             -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
             overscroll-behavior: contain; /* 防止滚动穿透 */
-            padding: 100px 24px calc(40px + env(safe-area-inset-bottom, 0px));
+            padding: 100px 24px 40px;
+        }
+        body.standalone-mode .custom-page-body {
+            padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
         }
         .custom-page-title {
             font-size: 20px;
@@ -582,13 +588,16 @@ body {
             border-radius: 16px 16px 0 0;
             width: 100%;
             max-width: 420px;
-            padding: 20px 16px calc(env(safe-area-inset-bottom, 12px) + 12px);
+            padding: 20px 16px 24px;
             display: flex;
             flex-direction: column;
             gap: 0;
             animation: pickerSlideUp 0.25s ease;
             flex-shrink: 0;
             margin-top: auto;
+        }
+        body.standalone-mode .image-picker-card {
+            padding-bottom: calc(env(safe-area-inset-bottom, 12px) + 12px);
         }
         @keyframes pickerSlideUp {
             from { transform: translateY(100%); }
@@ -2717,9 +2726,16 @@ body {
     border-top: 1px solid var(--ins-border);
     display: flex;
     flex-direction: column;
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: 0;
     flex-shrink: 0; /* 键盘弹起时底栏不被压缩 */
     transition: padding-bottom 0.15s ease;
+}
+
+/* 🔧 仅 PWA 独立模式下添加安全区域 padding（避开 iPhone Home Indicator）
+   普通浏览器中，浏览器自身 toolbar 已处理安全区域，无需额外 padding
+   这样所有设备在浏览器模式下底栏高度一致 */
+body.standalone-mode .chat-footer {
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* 键盘弹起时去掉安全区域 padding（Home指示条已被键盘遮住，不需要留空） */
@@ -4048,6 +4064,9 @@ body.standalone-mode .keyboard-up .chat-footer {
         
         /* 多选模式下给聊天区域添加底部内边距，避免被底部操作栏遮挡 */
         .chat-body.selection-mode {
+            padding-bottom: 80px;
+        }
+        body.standalone-mode .chat-body.selection-mode {
             padding-bottom: calc(80px + env(safe-area-inset-bottom));
         }
         @keyframes slideInLeft {
@@ -4070,6 +4089,10 @@ body.standalone-mode .keyboard-up .chat-footer {
             padding: 0 20px;
             z-index: 300; /* 高于 chat-footer */
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            padding-bottom: 0;
+            height: 60px;
+        }
+        body.standalone-mode .selection-bar {
             padding-bottom: env(safe-area-inset-bottom);
             height: calc(60px + env(safe-area-inset-bottom));
         }
@@ -6917,14 +6940,18 @@ body.standalone-mode .keyboard-up .chat-footer {
     background: rgba(255,255,255,0.9);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    padding: 10px 10px 30px 10px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    padding: 10px 10px 10px 10px;
     border-top: 0.5px solid rgba(0,0,0,0.1);
     display: flex;
     align-items: flex-end;
     z-index: 101;
     flex-shrink: 0; /* 键盘弹起时底栏不被压缩 */
     transition: padding-bottom 0.15s ease;
+}
+
+/* 🔧 仅 PWA 独立模式下添加安全区域 padding（与 .chat-footer 同理） */
+body.standalone-mode .message-input-area {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
 }
 
 /* 🔧 键盘弹起时去掉安全区域 padding（与 WeChat 的 .keyboard-up .chat-footer 一致） */
@@ -7029,11 +7056,9 @@ body.standalone-mode .keyboard-up .message-input-area {
     background: rgba(0, 0, 0, 0.5);
 }
 
-/* 适配安全区域 */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-    .message-home-indicator {
-        bottom: calc(8px + env(safe-area-inset-bottom));
-    }
+/* 适配安全区域 - 仅 PWA 独立模式 */
+body.standalone-mode .message-home-indicator {
+    bottom: calc(8px + env(safe-area-inset-bottom));
 }
 
 /* 短信编辑模式样式 */
@@ -12114,10 +12139,12 @@ body.standalone-mode .keyboard-up .message-input-area {
     background: #fff;
     border-top: 1px solid #eee;
     padding: 10px 16px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+body.standalone-mode .moqi-draw-toolbar {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
 }
 .moqi-tool-colors {
     display: flex;

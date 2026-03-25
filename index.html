@@ -24,9 +24,6 @@
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
     </noscript>
     
-    <!-- 激活码验证样式（独立文件） -->
-    <link rel="stylesheet" href="activation.css?v=1.1">
-    
     <!-- 引入外部样式表 - 添加版本号防止缓存 -->
     <link rel="stylesheet" href="style.css?v=6.0">
     
@@ -2500,6 +2497,12 @@
                                     </div>
                                     <div class="action-name">快进</div>
                                 </div>
+                                <div class="action-item" onclick="showBubbleBeautifyModal()">
+                                    <div class="action-icon-box">
+                                        <svg class="svg-icon" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+                                    </div>
+                                    <div class="action-name">美化</div>
+                                </div>
                             </div>
                             <!-- 第二页 -->
                             <div class="action-panel-page" id="action-page-2">
@@ -3132,7 +3135,16 @@
                 </div>
             </div>
 
-            <div style="padding:20px; text-align:center;">
+            <div style="padding:20px 20px 10px; text-align:center;">
+                <button onclick="exportCharacterData()" style="color:#007aff; background:none; border:none; font-size:16px;">导出该角色聊天记录</button>
+            </div>
+
+            <div style="padding:0 20px 20px; text-align:center;">
+                <button onclick="document.getElementById('import-char-file').click()" style="color:#007aff; background:none; border:none; font-size:16px;">导入该角色聊天记录</button>
+                <input type="file" id="import-char-file" accept=".json" style="display:none" onchange="importCharacterData(this)">
+            </div>
+
+            <div style="padding:0 20px 10px; text-align:center;">
                 <button onclick="clearChatHistory()" style="color:#ff3b30; background:none; border:none; font-size:16px;">清空聊天记录</button>
             </div>
             
@@ -3844,6 +3856,162 @@
         </div>
     </div>
 
+    <!-- 聊天气泡美化（素材库 + 由角色决定风格） -->
+    <div class="modal-overlay" id="bubble-beautify-modal" style="display:none; align-items:flex-end;">
+        <div class="modal-box" id="beautify-modal-box" style="position:relative; width:100%; max-width:480px; border-radius:16px 16px 0 0; height:88vh; max-height:88vh; margin:0; padding:0; overflow:hidden; display:flex; flex-direction:column; background:#fff;">
+            <input type="file" id="beautify-asset-input" accept="image/*" style="display:none;" onchange="beautifyOnAssetFileSelected(this)">
+
+            <!-- 第 1 屏：气泡素材库（类似头像库：相册 / 链接） -->
+            <div id="beautify-step-library" style="display:none; flex:1; flex-direction:column; min-height:0;">
+                <div style="flex-shrink:0; background:rgba(255,255,255,.96); border-bottom:1px solid #efefef; padding:10px 8px 8px; padding-top:max(12px, env(safe-area-inset-top, 0px));">
+                    <div style="display:flex; align-items:center; min-height:40px;">
+                        <div onclick="closeBubbleBeautifyModal()" style="cursor:pointer; padding:8px 10px; flex-shrink:0;">
+                            <svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:none; stroke:#262626; stroke-width:1.8;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                        </div>
+                        <div style="flex:1; text-align:center; font-size:16px; font-weight:600; color:#262626;">气泡与聊天页</div>
+                        <div onclick="beautifyShowImportSheet()" style="cursor:pointer; padding:8px 12px; flex-shrink:0;">
+                            <svg viewBox="0 0 24 24" style="width:22px; height:22px; fill:none; stroke:#262626; stroke-width:1.8;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </div>
+                    </div>
+                    <div style="font-size:12px; color:#8e8e8e; text-align:center; line-height:1.45; padding:4px 12px 2px;">参考图与说明保存在该角色下，所有回合共用（类似头像库）。是否用图由 <span id="beautify-char-name-mode" style="font-weight:600; color:#333;">TA</span> 按人设决定。</div>
+                </div>
+                <div id="beautify-library-grid" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px; align-content:start;"></div>
+                <div style="flex-shrink:0; padding:0 12px 8px;">
+                    <div id="beautify-mode-recap" style="font-size:11px; color:#999; margin-bottom:8px; padding:8px 10px; background:#f5f5f5; border-radius:8px;"></div>
+                    <div id="beautify-status-text" style="font-size:12px; color:#888; margin-bottom:8px; line-height:1.5;">
+                        生成时会附带<strong>档案里能读到的完整文本人设</strong>（description、personality、场景、示例对话等，本地按原文发送）。按<strong>角色本人会喜欢的风格</strong>生成，避免职业刻板印象；顶栏/底栏内嵌的 <strong>SVG 图标</strong>也可用 CSS 改 stroke/fill/filter。按钮位置固定。均只作用<strong>当前这一聊天口</strong>。
+                    </div>
+                    <div style="font-size:12px; color:#999; margin-bottom:6px;">补充说明（选填）</div>
+                    <textarea id="beautify-user-wish"
+                        style="width:100%; min-height:64px; font-size:14px; border:1px solid #e8e8e8; border-radius:10px; padding:10px; box-sizing:border-box; resize:vertical; color:#333; background:#fafafa; line-height:1.45;"
+                        placeholder="气泡：例如便签感、圆角大小…  聊天页：例如夜间风、樱花粉顶栏、磨砂底栏、输入框药丸形…"></textarea>
+                </div>
+                <div style="flex-shrink:0; padding:12px; padding-bottom:max(12px, env(safe-area-inset-bottom, 0px)); border-top:1px solid #efefef; background:#fff;">
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" class="modal-btn btn-confirm" onclick="startBubbleBeautifyGenerate()" style="flex:1; background:linear-gradient(135deg,#c060d0,#9040b0); border:none; border-radius:12px; padding:12px 8px; font-size:14px; font-weight:600;">让 TA 设计气泡</button>
+                        <button type="button" class="modal-btn btn-confirm" onclick="startChatShellBeautifyGenerate()" style="flex:1; background:linear-gradient(135deg,#5b8def,#4060c0); border:none; border-radius:12px; padding:12px 8px; font-size:14px; font-weight:600;">让 TA 设计聊天页</button>
+                    </div>
+                    <div onclick="clearChatShellBeautyForThread()" style="text-align:center;margin-top:10px;font-size:12px;color:#8e8e8e;cursor:pointer;">清除本聊天口界面皮肤</div>
+                </div>
+            </div>
+
+            <!-- 添加素材底部弹层（相册 / 链接） -->
+            <div id="beautify-import-overlay" onclick="if(event.target===this)beautifyHideImportSheet();" style="display:none; position:absolute; inset:0; z-index:20; background:rgba(0,0,0,0.35); align-items:flex-end; justify-content:center;">
+                <div onclick="event.stopPropagation();" style="width:100%; max-height:70%; background:#fff; border-radius:16px 16px 0 0; padding:20px 16px 16px; padding-bottom:max(16px, env(safe-area-inset-bottom, 0px)); box-sizing:border-box; overflow-y:auto;">
+                    <div style="text-align:center; font-size:16px; font-weight:600; color:#262626; margin-bottom:6px;">添加素材</div>
+                    <div style="text-align:center; font-size:12px; color:#c7c7c7; margin-bottom:18px;">相册或图片链接，可多张</div>
+                    <div onclick="beautifyPickAlbumThenHide();" style="display:flex; align-items:center; gap:12px; padding:14px 14px; border:1px solid #efefef; border-radius:12px; margin-bottom:10px; cursor:pointer;">
+                        <div style="width:36px;height:36px;border:1px solid #efefef;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+                            <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#262626;stroke-width:1.6;"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                        </div>
+                        <div style="flex:1;"><div style="font-size:14px;font-weight:500;color:#262626;">从相册选择</div><div style="font-size:11px;color:#c7c7c7;margin-top:2px;">JPG / PNG / GIF / WebP</div></div>
+                    </div>
+                    <div onclick="beautifyToggleUrlArea();" style="display:flex; align-items:center; gap:12px; padding:14px 14px; border:1px solid #efefef; border-radius:12px; margin-bottom:12px; cursor:pointer;">
+                        <div style="width:36px;height:36px;border:1px solid #efefef;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+                            <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:#262626;stroke-width:1.6;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                        </div>
+                        <div style="flex:1;"><div style="font-size:14px;font-weight:500;color:#262626;">粘贴图片链接</div><div style="font-size:11px;color:#c7c7c7;margin-top:2px;">一行一个，支持 http(s)</div></div>
+                    </div>
+                    <div id="beautify-url-area" style="display:none; margin-bottom:12px;">
+                        <textarea id="beautify-url-textarea" placeholder="https://example.com/a.png&#10;https://example.com/b.jpg" style="width:100%;height:88px;padding:10px 12px;border:1px solid #efefef;border-radius:10px;font-size:13px;box-sizing:border-box;resize:vertical;"></textarea>
+                        <button type="button" onclick="beautifyImportUrlsFromTextarea()" style="margin-top:8px;width:100%;padding:11px;background:#262626;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;">导入链接</button>
+                    </div>
+                    <button type="button" onclick="beautifyHideImportSheet()" style="width:100%;padding:12px;background:transparent;border:none;color:#8e8e8e;font-size:14px;">取消</button>
+                </div>
+            </div>
+
+            <!-- 加载状态 -->
+            <div id="beautify-loading" style="display:none; flex-direction:column; align-items:center; padding:28px 0; gap:12px;">
+                <div style="width:36px; height:36px; border:3px solid #e8b4f5; border-top-color:#c060d0; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+                <div style="font-size:13px; color:#aaa;">正在按 TA 的想法绘制…</div>
+            </div>
+
+            <!-- 预览区域 -->
+            <div id="beautify-preview-area" style="display:none;">
+                <div id="beautify-result-hint" style="font-size:12px; color:#888; margin-bottom:10px; line-height:1.5;"></div>
+                <div style="font-size:12px; color:#999; margin-bottom:6px; font-weight:500;">预览（左为对方，右为你）</div>
+                <div id="beautify-preview-bubbles" style="padding:14px 10px; background:#efefef; border-radius:14px; margin-bottom:12px; box-sizing:border-box; width:100%;">
+                    <div style="font-size:11px; color:#888; margin-bottom:4px;">对方 · 选择器 .message-row.other .message-content</div>
+                    <div class="message-row other" style="display:flex; flex-direction:row; width:100%; box-sizing:border-box; align-items:flex-end; justify-content:flex-start; margin-bottom:12px; gap:8px;">
+                        <div style="width:32px; height:32px; border-radius:50%; background:#ddd; flex-shrink:0; align-self:flex-end;"></div>
+                        <div class="message-content" style="max-width:72%; font-size:14px; flex:0 1 auto;">好久不见，最近还好吗？😊</div>
+                    </div>
+                    <div style="font-size:11px; color:#888; margin-bottom:4px; text-align:right;">你（用户）· 选择器 .message-row.self .message-content</div>
+                    <div class="message-row self" style="display:flex; flex-direction:row; width:100%; box-sizing:border-box; align-items:flex-end; justify-content:flex-end; margin-bottom:4px; gap:8px;">
+                        <div class="message-content" style="max-width:72%; font-size:14px; flex:0 1 auto; order:1;">嗯嗯，一直在想你呢 ♡</div>
+                        <div style="width:32px; height:32px; border-radius:50%; background:#ccc; flex-shrink:0; align-self:flex-end; order:2;"></div>
+                    </div>
+                </div>
+
+                <div style="font-size:12px; color:#999; margin-bottom:6px; font-weight:500; display:flex; align-items:center; justify-content:space-between;">
+                    <span>样式代码（可改）</span>
+                    <span style="color:#c060d0; cursor:pointer; font-size:11px;" onclick="refreshBeautyPreview()">刷新预览</span>
+                </div>
+                <textarea id="beautify-css-output"
+                    oninput="refreshBeautyPreview()"
+                    style="width:100%; height:120px; font-size:11px; font-family:monospace; border:1px solid #e0e0e0; border-radius:10px; padding:10px; box-sizing:border-box; resize:vertical; color:#333; background:#fafafa; line-height:1.5;"
+                    placeholder="样式代码会出现在这里…"></textarea>
+
+                <div class="modal-btns" style="margin-top:14px; gap:8px;">
+                    <button type="button" class="modal-btn btn-cancel" onclick="closeBubbleBeautifyModal()" style="flex:1;">取消</button>
+                    <button type="button" id="beautify-regen-btn" class="modal-btn btn-cancel" onclick="regenerateBubbleBeauty()" style="flex:1; color:#c060d0; border-color:#e0b0f0;">重新生成</button>
+                    <button type="button" id="beautify-apply-btn" class="modal-btn btn-confirm" onclick="applyBubbleBeauty()" style="flex:1.2; background:linear-gradient(135deg,#c060d0,#9040b0);">立即使用</button>
+                </div>
+            </div>
+
+            <!-- 聊天页皮肤预览（顶栏/消息区/底栏/输入条） -->
+            <div id="beautify-preview-shell-area" style="display:none; flex:1; flex-direction:column; min-height:0; padding:16px; overflow-y:auto; -webkit-overflow-scrolling:touch;">
+                <div id="beautify-shell-result-hint" style="font-size:12px; color:#888; margin-bottom:10px; line-height:1.5;"></div>
+                <div style="font-size:12px; color:#999; margin-bottom:6px; font-weight:500;">预览（结构与真实 <code style="font-size:11px;">#chat-window</code> 一致，样式会自动加前缀）</div>
+                <div id="beautify-shell-preview" style="border-radius:14px; overflow:hidden; border:1px solid #e0e0e0; margin-bottom:12px; display:flex; flex-direction:column; max-height:280px; background:#fff;">
+                    <div class="chat-header" style="display:flex; align-items:center; padding:6px 8px; min-height:46px; gap:6px; flex-shrink:0; box-sizing:border-box;">
+                        <div class="chat-back" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <svg class="svg-icon" viewBox="0 0 24 24" style="width:22px;height:22px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                        </div>
+                        <div class="chat-title" style="flex:1;text-align:center;font-weight:600;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">预览标题</div>
+                        <div class="chat-more" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <svg class="svg-icon" viewBox="0 0 24 24" style="width:18px;height:18px;"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                        </div>
+                        <div class="chat-more" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <svg class="svg-icon" viewBox="0 0 24 24" style="width:18px;height:18px;"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                        </div>
+                    </div>
+                    <div class="chat-body" style="flex:1; min-height:64px; padding:12px; font-size:12px; color:#999; display:flex; align-items:center; justify-content:center; box-sizing:border-box;">消息列表区域 · .chat-body</div>
+                    <div class="chat-footer" style="flex-shrink:0; box-sizing:border-box;">
+                        <div class="chat-input-bar" style="display:flex; align-items:center; gap:6px; padding:8px 10px; box-sizing:border-box;">
+                            <div class="chat-icon-btn" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg class="svg-icon" viewBox="0 0 24 24" style="width:20px;height:20px;"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>
+                            </div>
+                            <input type="text" class="chat-input" readonly tabindex="-1" style="flex:1; min-width:0; border:1px solid #e5e5e5; border-radius:18px; padding:7px 12px; font-size:14px; box-sizing:border-box; background:#fafafa;" value="输入框…">
+                            <div class="chat-icon-btn" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg class="svg-icon" viewBox="0 0 24 24" style="width:20px;height:20px;"><circle cx="12" cy="12" r="10"></circle></svg>
+                            </div>
+                            <div class="chat-icon-btn" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg class="svg-icon" viewBox="0 0 24 24" style="width:20px;height:20px;"><circle cx="12" cy="12" r="10"></circle></svg>
+                            </div>
+                            <div class="chat-send-btn" style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border-radius:50%;background:#07c160;">
+                                <svg class="svg-icon" viewBox="0 0 24 24" style="width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2.5;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2" fill="#fff" stroke="none"></polygon></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style="font-size:12px; color:#999; margin-bottom:6px; font-weight:500; display:flex; align-items:center; justify-content:space-between;">
+                    <span>样式代码（可改）</span>
+                    <span style="color:#5b8def; cursor:pointer; font-size:11px;" onclick="refreshShellBeautyPreview()">刷新预览</span>
+                </div>
+                <textarea id="beautify-shell-css-output"
+                    oninput="refreshShellBeautyPreview()"
+                    style="width:100%; height:120px; font-size:11px; font-family:monospace; border:1px solid #e0e0e0; border-radius:10px; padding:10px; box-sizing:border-box; resize:vertical; color:#333; background:#fafafa; line-height:1.5;"
+                    placeholder="聊天页 CSS 会出现在这里…"></textarea>
+                <div class="modal-btns" style="margin-top:14px; gap:8px;">
+                    <button type="button" class="modal-btn btn-cancel" onclick="closeBubbleBeautifyModal()" style="flex:1;">取消</button>
+                    <button type="button" class="modal-btn btn-cancel" onclick="regenerateChatShellBeauty()" style="flex:1; color:#5b8def; border-color:#c5d8ff;">重新生成</button>
+                    <button type="button" class="modal-btn btn-confirm" onclick="applyChatShellBeauty()" style="flex:1.2; background:linear-gradient(135deg,#5b8def,#4060c0);">立即使用</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 所有隐藏上传Input -->
     <input type="file" id="wallpaper-input" class="custom-input" accept="image/*" onchange="setWallpaper(this)">
     <input type="file" id="custom-icon-input" class="custom-input" accept="image/*" onchange="setCustomIcon(this)">
@@ -4472,7 +4640,7 @@
         <!-- 批量删除底部操作栏 -->
         <div id="avatar-batch-bar" style="display:none; position:sticky; bottom:0; left:0; right:0; z-index:20;
             background:rgba(255,255,255,0.96); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-            border-top:1px solid #efefef; padding:10px 8px; padding-bottom:calc(10px + env(safe-area-inset-bottom));
+            border-top:1px solid #efefef; padding:10px 8px;
             align-items:center; justify-content:space-between;">
             <!-- 动态生成 -->
         </div>
@@ -7836,7 +8004,7 @@
             <!-- 动态生成 -->
         </div>
         <!-- 底部按钮 -->
-        <div style="position:sticky; bottom:0; left:0; right:0; padding:16px 20px; padding-bottom:calc(16px + env(safe-area-inset-bottom)); background:rgba(255,255,255,0.96); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(0,0,0,0.04);">
+        <div style="position:sticky; bottom:0; left:0; right:0; padding:16px 20px; background:rgba(255,255,255,0.96); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(0,0,0,0.04);">
             <div onclick="showIntimateCreateFlow()" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:14px 0; background:#262626; border-radius:12px; cursor:pointer; transition:opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
                 <svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:#fff; stroke-width:2;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 <span style="color:#fff; font-size:14px; font-weight:500; letter-spacing:0.5px;">建立亲密关系</span>
@@ -7932,7 +8100,7 @@
             <!-- 动态生成 -->
         </div>
         <!-- 留言输入区 -->
-        <div style="position:sticky; bottom:0; left:0; right:0; padding:12px 20px; padding-bottom:calc(12px + env(safe-area-inset-bottom)); background:rgba(255,255,255,0.96); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(0,0,0,0.04);">
+        <div style="position:sticky; bottom:0; left:0; right:0; padding:12px 20px; background:rgba(255,255,255,0.96); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(0,0,0,0.04);">
             <div style="display:flex; gap:10px; align-items:center;">
                 <input type="text" id="intimate-board-input" placeholder="写一条留言..." style="flex:1; padding:10px 14px; border:1.5px solid #efefef; border-radius:10px; font-size:14px; outline:none; color:#262626; background:#fff; transition:border-color 0.2s;" onfocus="this.style.borderColor='#d0d0d0'" onblur="this.style.borderColor='#efefef'">
                 <div onclick="sendIntimateMessage()" style="padding:10px 16px; background:#262626; color:#fff; border-radius:10px; font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap; transition:opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">发送</div>
@@ -7957,8 +8125,22 @@
     </div>
 
     <!-- 引入外部 JavaScript 文件 -->
-    <!-- 激活码验证脚本（独立文件，必须在 script.js 之前） -->
-    <script src="activation.js"></script>
+    <!-- 个性化设置 JS（独立文件，在 script.js defer 之前同步执行，确保函数先于初始化可用） -->
+    <script src="personalization.js"></script>
+    <!-- 系统设置 JS（独立文件） -->
+    <script src="settings.js"></script>
+    <!-- 世界书 JS（独立文件） -->
+    <script src="lorebook.js"></script>
+    <!-- 网易云音乐播放器 JS（独立文件） -->
+    <script src="wyy.js"></script>
+    <!-- 角色档案 JS（独立文件） -->
+    <script src="character.js"></script>
+    <!-- icity 日记应用 JS（独立文件） -->
+    <script src="icity.js"></script>
+    <!-- 闲鱼 App JS（独立文件） -->
+    <script src="xianyu.js"></script>
+    <!-- 小屋功能 JS（独立文件） -->
+    <script src="cabin.js"></script>
     <script src="script.js" defer></script>
     
 
