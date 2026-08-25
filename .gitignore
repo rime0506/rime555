@@ -1,0 +1,12 @@
+# 数据目录（重要：不要提交到 git）
+data/
+backups/
+
+# Node modules
+node_modules/
+
+# 环境变量
+.env
+
+# 日志
+*.log

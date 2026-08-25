@@ -25,7 +25,7 @@
     </noscript>
     
     <!-- 引入外部样式表 - 添加版本号防止缓存 -->
-    <link rel="stylesheet" href="style.css?v=6.0">
+    <link rel="stylesheet" href="style.css?v=6.2">
     
     <!-- Font Awesome 图标库 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
@@ -209,18 +209,6 @@
                             <div class="icon"></div>
                             <div class="name">查手机</div>
                         </div>
-                        <div class="app-icon" id="icon-placeholder">
-                            <div class="icon"></div>
-                            <div class="name">占位</div>
-                        </div>
-                        <div class="app-icon" id="icon-placeholder2">
-                            <div class="icon"></div>
-                            <div class="name">占位</div>
-                        </div>
-                        <div class="app-icon" id="icon-placeholder3">
-                            <div class="icon"></div>
-                            <div class="name">占位</div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -283,6 +271,69 @@
             <!-- 详情内容区域 -->
             <div id="sticker-detail-content" class="sticker-content">
                 <!-- 动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 查手机桌面图集管理页面 -->
+    <div class="custom-page desktop-atlas-page" id="desktop-atlas-page" style="display:none;">
+        <!-- 分类列表 -->
+        <div id="desktop-atlas-category-view" class="desktop-atlas-view">
+            <div class="custom-page-header">
+                <div class="back-btn" onclick="hideDesktopAtlasPage()">
+                    <svg class="svg-icon" style="width:20px;height:20px;" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </div>
+                <div class="custom-page-title">图集</div>
+                <div class="save-btn" onclick="createDesktopAtlasCategory()" style="opacity:1; font-size:14px;">新建分类</div>
+            </div>
+            <div class="desktop-atlas-page-content">
+                <div class="desktop-atlas-page-tip">按风格建立多个分类。系统会结合分类名称和素材关键词，为角色挑选桌面壁纸与图标。</div>
+                <div id="desktop-atlas-category-list" class="desktop-atlas-category-list"></div>
+            </div>
+        </div>
+
+        <!-- 分类详情 -->
+        <div id="desktop-atlas-detail-view" class="desktop-atlas-view" style="display:none;">
+            <div class="custom-page-header">
+                <div class="back-btn" onclick="backToDesktopAtlasCategories()">
+                    <svg class="svg-icon" style="width:20px;height:20px;" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </div>
+                <div class="custom-page-title" id="desktop-atlas-detail-title">图集分类</div>
+                <div class="save-btn" onclick="renameDesktopAtlasCategory()" style="opacity:1; font-size:14px;">重命名</div>
+            </div>
+            <div class="desktop-atlas-page-content desktop-atlas-detail-content">
+                <div class="desktop-atlas-add-panel">
+                    <div class="desktop-atlas-panel-title">添加素材</div>
+                    <div class="desktop-atlas-type-tabs">
+                        <button type="button" id="desktop-atlas-type-wallpaper" class="active" onclick="setDesktopAtlasItemType('wallpaper')">壁纸</button>
+                        <button type="button" id="desktop-atlas-type-icon" onclick="setDesktopAtlasItemType('icon')">图标</button>
+                    </div>
+                    <input type="text" class="custom-edit-input" id="desktop-atlas-keywords" placeholder="素材关键词，如：清冷、蓝色、极简、科技感">
+                    <input type="url" class="custom-edit-input" id="desktop-atlas-url" placeholder="图片链接（也可以直接上传图片）">
+                    <div class="desktop-atlas-actions">
+                        <button type="button" class="desktop-atlas-btn secondary" onclick="document.getElementById('desktop-atlas-file').click()">上传图片</button>
+                        <button type="button" class="desktop-atlas-btn primary" onclick="addDesktopAtlasUrl()">添加链接</button>
+                    </div>
+                    <input type="file" id="desktop-atlas-file" accept="image/*" style="display:none" onchange="addDesktopAtlasUpload(this)">
+                </div>
+
+                <section class="desktop-atlas-media-section">
+                    <div class="desktop-atlas-section-header">
+                        <div>壁纸</div>
+                        <div id="desktop-atlas-wallpaper-count">0 张</div>
+                    </div>
+                    <div id="desktop-atlas-wallpaper-list" class="desktop-atlas-media-grid wallpaper"></div>
+                </section>
+
+                <section class="desktop-atlas-media-section">
+                    <div class="desktop-atlas-section-header">
+                        <div>图标</div>
+                        <div id="desktop-atlas-icon-count">0 张</div>
+                    </div>
+                    <div id="desktop-atlas-icon-list" class="desktop-atlas-media-grid icon"></div>
+                </section>
+
+                <button type="button" class="desktop-atlas-delete-category" onclick="deleteDesktopAtlasCategory()">删除此分类</button>
             </div>
         </div>
     </div>
@@ -455,6 +506,12 @@
                 </div>
             </div>
 
+        </div>
+
+        <!-- 图集：供查手机桌面 AI 按角色人设选择壁纸和图标 -->
+        <div class="custom-item" onclick="showDesktopAtlasPage()">
+            <div class="custom-item-text">图集</div>
+            <div class="custom-item-arrow">→</div>
         </div>
 
         <!-- 折叠项2：全局字体设置 -->
@@ -958,10 +1015,10 @@
                 </div>
             </div>
 
-            <!-- NovelAI 图片生成设置 折叠卡片 -->
+            <!-- 图片生成设置（NovelAI / GPT）折叠卡片 -->
             <div class="api-setting-card">
                 <div class="api-header" onclick="toggleNovelAISettings()">
-                    <div class="api-title">NovelAI 图片生成</div>
+                    <div class="api-title">🎨 图片生成（NovelAI / GPT）</div>
                     <div class="api-arrow" id="novelai-setting-arrow">▼</div>
                 </div>
                 <div class="api-body" id="novelai-setting-body" style="display: none;">
@@ -970,7 +1027,7 @@
                     <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; margin-bottom:12px; border-bottom:1px solid #e0e0e0;">
                         <div>
                             <div style="font-size:14px; font-weight:500; color:#333;">自动生成图片</div>
-                            <div style="font-size:11px; color:#999; margin-top:2px;">角色发送图片卡片时自动调用 NovelAI 生成图片</div>
+                            <div id="image-provider-hint" style="font-size:11px; color:#999; margin-top:2px;">角色发送图片卡片时自动调用 NovelAI 生成图片</div>
                         </div>
                         <label class="ios-switch" onclick="event.stopPropagation()">
                             <input type="checkbox" id="novelai-auto-generate-switch" onchange="toggleNovelAIAutoGenerate(this)">
@@ -978,7 +1035,82 @@
                         </label>
                     </div>
 
+                    <!-- GPT 生图提供方设置 -->
+                    <div style="padding:12px; margin-bottom:14px; border:1px solid #e8e8e8; border-radius:10px; background:#fafafa;">
+                        <div style="display:flex; align-items:center; justify-content:space-between;">
+                            <div>
+                                <div style="font-size:14px; font-weight:500; color:#333;">启用 GPT 生图</div>
+                                <div style="font-size:11px; color:#999; margin-top:2px;">开启后，聊天、群聊和视频通话生图将改用 GPT</div>
+                            </div>
+                            <label class="ios-switch" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="gpt-image-enabled-switch" onchange="toggleGPTImageEnabled(this)">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="gpt-image-config-body" style="display:none;">
+                        <div class="api-label">GPT 生图 API 地址 / 反代地址</div>
+                        <div class="api-input-group">
+                            <input type="text" class="api-input" id="gpt-image-base-url" placeholder="https://api.openai.com 或反代地址（无需 /v1）" onchange="autoSaveGPTImage()">
+                        </div>
+                        <div style="font-size:11px; color:#999; margin-top:4px; padding:0 4px;">
+                            自动请求 <code>/v1/models</code> 和 <code>/v1/images/generations</code>；也支持直接填写完整生图端点。
+                        </div>
+
+                        <div class="api-label">GPT 生图 API 密钥</div>
+                        <div class="api-input-group">
+                            <input type="password" class="api-input" id="gpt-image-api-key" placeholder="sk-..." onchange="autoSaveGPTImage()">
+                            <div class="eye-icon" onclick="toggleGPTImageKeyVis()">显示</div>
+                        </div>
+
+                        <div class="api-label">GPT 生图模型</div>
+                        <div class="model-row">
+                            <div class="model-select-wrapper">
+                                <select class="model-select" id="gpt-image-model-select" onchange="autoSaveGPTImage()">
+                                    <option value="" disabled selected>请先拉取模型</option>
+                                </select>
+                            </div>
+                            <button class="fetch-btn" onclick="fetchGPTImageModels()">
+                                <div class="loading-spinner" id="gpt-image-fetch-spinner"></div>
+                                <span id="gpt-image-fetch-text">拉取模型</span>
+                            </button>
+                        </div>
+
+                        <div class="api-label">图像尺寸</div>
+                        <div class="api-input-group">
+                            <select class="api-input" id="gpt-image-size" onchange="autoSaveGPTImage()" style="padding:12px;">
+                                <option value="1024x1536" selected>1024x1536（竖版）</option>
+                                <option value="1536x1024">1536x1024（横版）</option>
+                                <option value="1024x1024">1024x1024（方形）</option>
+                                <option value="auto">auto（由模型决定）</option>
+                            </select>
+                        </div>
+
+                        <div class="api-label">图像质量</div>
+                        <div class="api-input-group">
+                            <select class="api-input" id="gpt-image-quality" onchange="autoSaveGPTImage()" style="padding:12px;">
+                                <option value="auto" selected>auto（推荐）</option>
+                                <option value="low">low</option>
+                                <option value="medium">medium</option>
+                                <option value="high">high</option>
+                            </select>
+                        </div>
+
+                        <div class="api-label">提示词前缀（可选）</div>
+                        <div class="api-input-group">
+                            <textarea class="api-input" id="gpt-image-prompt-prefix" placeholder="例如：日系动漫风格，柔和光线，细节丰富" rows="2" onchange="autoSaveGPTImage()" style="resize:vertical; min-height:60px;"></textarea>
+                        </div>
+
+                        <button class="test-btn" onclick="testGPTImageConnection()" style="margin-top:10px;">
+                            <span id="test-gpt-image-btn-text">测试 GPT 生图</span>
+                        </button>
+                        <div id="gpt-image-test-result" style="margin-top:12px; font-size:12px; min-height:20px; line-height:1.5; color:#999;"></div>
+                    </div>
+
+                    <div id="novelai-config-body">
                     <!-- NovelAI API设置 -->
+                    <div style="font-size:13px; font-weight:600; color:#666; margin-bottom:12px;">当前提供方：NovelAI</div>
                     <div class="api-label">NovelAI API Key</div>
                     <div class="api-input-group">
                         <input type="password" class="api-input" id="novelai-api-key" placeholder="输入 NovelAI API Key" onchange="autoSaveNovelAI()">
@@ -1053,6 +1185,40 @@
                                 <option value="832x832">832x832（小方形）</option>
                             </select>
                         </div>
+
+                        <div style="margin-top: 16px; padding: 12px; border: 1px solid #e8e8e8; border-radius: 10px; background: #fafafa;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                                <div>
+                                    <div style="font-size:14px; font-weight:500; color:#333;">Image2Image（导图）</div>
+                                    <div style="font-size:11px; color:#999; margin-top:2px;">上传参考图后再生图，适合姿势/构图延续</div>
+                                </div>
+                                <label class="ios-switch" onclick="event.stopPropagation()">
+                                    <input type="checkbox" id="novelai-img2img-enabled" onchange="toggleNovelAIImg2Img(this)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+
+                            <div id="novelai-img2img-body" style="display:none;">
+                                <div class="api-label" style="margin-top:0;">参考图</div>
+                                <div class="api-input-group" style="display:flex; gap:8px; align-items:center;">
+                                    <input type="file" id="novelai-img2img-file" accept="image/*" onchange="handleNovelAIImg2ImgUpload(this)" style="flex:1; font-size:12px;">
+                                    <button type="button" onclick="clearNovelAIImg2ImgImage()" style="padding:8px 10px; border:none; border-radius:8px; background:#f0f0f0; color:#666; font-size:12px; cursor:pointer;">清空</button>
+                                </div>
+                                <div id="novelai-img2img-preview-wrap" style="display:none; margin-top:8px;">
+                                    <img id="novelai-img2img-preview" alt="img2img-preview" style="max-width:100%; max-height:160px; border-radius:8px; border:1px solid #e5e5e5; object-fit:cover;">
+                                </div>
+
+                                <div class="api-label">重绘强度 (strength)</div>
+                                <div class="api-input-group">
+                                    <input type="number" class="api-input" id="novelai-img2img-strength" min="0" max="1" step="0.05" value="0.6" onchange="autoSaveNovelAI()">
+                                </div>
+
+                                <div class="api-label">噪声 (noise)</div>
+                                <div class="api-input-group">
+                                    <input type="number" class="api-input" id="novelai-img2img-noise" min="0" max="1" step="0.05" value="0.2" onchange="autoSaveNovelAI()">
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Prompt 设置 -->
@@ -1081,9 +1247,52 @@
                             提示：用于排除不希望出现的元素
                         </div>
                     </div>
+                    </div>
                 </div>
             </div>
             
+            <!-- Minimax 语音设置折叠卡片 -->
+            <div class="api-setting-card">
+                <div class="api-header" onclick="toggleMinimaxVoiceSetting()">
+                    <div class="api-title">🎙️ Minimax 语音</div>
+                    <div class="api-arrow" id="minimax-voice-setting-arrow">▼</div>
+                </div>
+                <div class="api-body" id="minimax-voice-setting-body" style="display:none;">
+                    <div style="font-size:12px; color:#999; margin-bottom:12px; line-height:1.5;">
+                        这里可以配置 Minimax 语音 API 的密钥、模型和音色。<br>接口地址已内置为官方地址，无需手动填写。
+                    </div>
+
+                    <div class="api-label">API 密钥</div>
+                    <div class="api-input-group">
+                        <input type="password" class="api-input" id="minimax-voice-key-input" placeholder="输入 Minimax API Key" onchange="autoSaveMinimaxVoice()">
+                        <div class="eye-icon" onclick="toggleMinimaxVoiceKeyVis()">显示</div>
+                    </div>
+
+                    <div class="api-label">语音模型</div>
+                    <div class="model-row">
+                        <div class="model-select-wrapper">
+                            <select class="model-select" id="minimax-voice-model-select" onchange="autoSaveMinimaxVoice()">
+                                <option value="" disabled selected>请先拉取语音模型</option>
+                            </select>
+                        </div>
+                        <button class="fetch-btn" onclick="fetchMinimaxVoiceModels()">
+                            <div class="loading-spinner" id="minimax-voice-fetch-spinner"></div>
+                            <span id="minimax-voice-fetch-text">拉取语音模型</span>
+                        </button>
+                    </div>
+
+                    <div class="api-label">音色 ID（可选）</div>
+                    <div class="api-input-group">
+                        <input type="text" class="api-input" id="minimax-voice-voiceid-input" placeholder="例如：male_1 / female_1" onchange="autoSaveMinimaxVoice()">
+                    </div>
+
+                    <button class="test-btn" onclick="testMinimaxVoiceConnection()" style="margin-top:12px;">
+                        <span id="test-minimax-voice-btn-text">测试 Minimax 语音连接</span>
+                    </button>
+                    <button onclick="clearMinimaxVoiceConfig()" style="margin-top:8px; width:100%; padding:10px; background:#f5f5f5; color:#999; border:none; border-radius:8px; font-size:13px; cursor:pointer;">清空 Minimax 语音配置</button>
+                </div>
+            </div>
+
             <!-- 联机设置 折叠卡片 -->
             <div class="api-setting-card">
                 <div class="api-header" onclick="toggleOnlineSettings()">
@@ -1398,6 +1607,27 @@
         </div>
         
     </div>
+
+    <div class="wechat-page screen-call-page" id="screen-call-page" style="display:none; z-index:280;">
+        <div class="wechat-header">
+            <div class="back-btn" onclick="hideScreenShareCallPage()" style="margin:0; background:none; width:40px; justify-content:flex-start; padding-left:0; color:var(--ins-text);">
+                <svg class="svg-icon" viewBox="0 0 24 24" style="width:28px; height:28px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </div>
+            <div class="wechat-title">视频通话AI</div>
+            <div style="width:40px;"></div>
+        </div>
+        <div class="screen-call-body">
+            <div class="screen-call-video-wrap">
+                <canvas id="screen-call-canvas" width="540" height="960" aria-label="屏幕共享预览"></canvas>
+                <div class="screen-call-status" id="screen-call-status">等待屏幕共享...</div>
+            </div>
+            <div class="screen-call-controls">
+                <button id="screen-call-mic-btn" class="screen-call-mic-btn" onclick="toggleScreenCallMic()">🎤 开启麦克风</button>
+                <button id="screen-call-stop-btn" class="screen-call-stop-btn" onclick="hideScreenShareCallPage()">结束</button>
+            </div>
+            <div class="screen-call-reply" id="screen-call-reply">AI回复会显示在这里</div>
+        </div>
+    </div>
     
     <!-- 微信注册页面 - INS风格 -->
     <!-- 微信注册页面 - 粉色INS风格 -->
@@ -1531,6 +1761,14 @@
             <div id="findphone-roles-list" style="display:flex; flex-direction:column; gap:10px;">
             </div>
         </div>
+
+        <div id="findphone-desktop-generating" class="findphone-generating-overlay" style="display:none;">
+            <div class="findphone-generating-card">
+                <div class="findphone-generating-spinner"></div>
+                <div class="findphone-generating-title">正在生成 TA 的手机桌面</div>
+                <div class="findphone-generating-subtitle">正在根据角色人设挑选壁纸和图标…</div>
+            </div>
+        </div>
     </div>
     
     <!-- 查手机 - TA的手机桌面（仿真桌面） -->
@@ -1556,7 +1794,7 @@
         <!-- 桌面应用区域 -->
         <div class="findphone-app-area">
             <div class="findphone-app-icon" onclick="openFindPhoneWechat()">
-                <div class="findphone-icon-img">
+                <div class="findphone-icon-img" id="findphone-icon-wechat">
                     <svg viewBox="0 0 1024 1024" style="width:32px; height:32px; fill:#fff;">
                         <path d="M690.1 377.4c5.9 0 11.8 0.2 17.6 0.5-24.4-128.7-158.3-227.1-313.4-227.1C209 150.8 54.8 281.4 54.8 444.1c0 91.8 49.9 167.1 133.2 225.8l-33.3 99.8 116.1-58.1c41.6 8.3 74.9 16.6 116.5 16.6 5.6 0 11.1-0.2 16.6-0.5-3.5-12.3-5.5-25.1-5.5-38.4 0-174.2 149.8-312.3 291.7-312.3zM487.8 285.5c24.9 0 41.6 16.6 41.6 41.6s-16.6 41.6-41.6 41.6-49.9-16.6-49.9-41.6 24.9-41.6 49.9-41.6zM262.4 368.6c-24.9 0-49.9-16.6-49.9-41.6s24.9-41.6 49.9-41.6 41.6 16.6 41.6 41.6-16.6 41.6-41.6 41.6zM1014.8 689.8c0-133.2-133.2-241.5-283.1-241.5-158.2 0-283 108.3-283 241.5S573.5 931.2 731.7 931.2c33.3 0 66.5-8.3 99.8-16.6l91.5 49.9-24.9-83.2c66.5-49.9 116.7-116.4 116.7-191.5zM648.5 648.2c-16.6 0-33.3-16.6-33.3-33.3s16.6-33.3 33.3-33.3 33.3 16.6 33.3 33.3-16.7 33.3-33.3 33.3zM814.9 648.2c-16.6 0-33.3-16.6-33.3-33.3s16.6-33.3 33.3-33.3 33.3 16.6 33.3 33.3-16.7 33.3-33.3 33.3z"/>
                     </svg>
@@ -1564,13 +1802,23 @@
                 <div class="findphone-app-label">WeChat</div>
             </div>
             <div class="findphone-app-icon" onclick="openFindPhoneBaidu()">
-                <div class="findphone-icon-img" style="background:linear-gradient(135deg, #2932e1 0%, #4e6ef2 100%);">
+                <div class="findphone-icon-img" id="findphone-icon-baidu" style="background:linear-gradient(135deg, #2932e1 0%, #4e6ef2 100%);">
                     <svg viewBox="0 0 1024 1024" style="width:30px; height:30px; fill:#fff;">
                         <path d="M412.8 619.2c-48-76.8-124.8-134.4-124.8-134.4s-108.8 54.4-115.2 172.8c-6.4 118.4 92.8 172.8 92.8 172.8s32 16 80 3.2c48-12.8 80-48 121.6-60.8 41.6-12.8 86.4 0 86.4 0s128 38.4 182.4 9.6c54.4-28.8 67.2-115.2 67.2-115.2s16-96-28.8-150.4c-44.8-54.4-108.8-19.2-137.6 16-28.8 35.2-57.6 73.6-89.6 86.4-35.2 12.8-99.2 12.8-134.4 0zM390.4 428.8c57.6 0 96-60.8 86.4-137.6-9.6-76.8-57.6-140.8-115.2-140.8s-96 57.6-86.4 140.8c6.4 76.8 57.6 137.6 115.2 137.6zM236.8 512c57.6-9.6 80-83.2 54.4-163.2-25.6-80-86.4-131.2-144-121.6-57.6 9.6-80 83.2-54.4 163.2 25.6 80 89.6 131.2 144 121.6zM633.6 428.8c57.6 0 105.6-60.8 99.2-137.6-9.6-76.8-64-137.6-121.6-137.6s-105.6 60.8-99.2 137.6c9.6 76.8 64 137.6 121.6 137.6zM790.4 512c57.6 9.6 118.4-41.6 140.8-121.6 25.6-80 0-153.6-57.6-163.2-57.6-9.6-118.4 41.6-140.8 121.6-25.6 80 0 153.6 57.6 163.2z"/>
                     </svg>
                 </div>
                 <div class="findphone-app-label">百度</div>
             </div>
+            <div class="findphone-app-icon" onclick="openFindPhoneDesktopSettings()">
+                <div class="findphone-icon-img findphone-settings-icon">
+                    <svg viewBox="0 0 24 24" style="width:34px; height:34px; fill:none; stroke:#fff; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round;">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.16.38.37.72.6 1 .3.3.68.45 1.1.4H21v4h-.09A1.7 1.7 0 0 0 19.4 15z"></path>
+                    </svg>
+                </div>
+                <div class="findphone-app-label">设置</div>
+            </div>
+            <div id="findphone-generated-apps" class="findphone-generated-apps"></div>
         </div>
         
         <!-- 底部home indicator + 拥有者 -->
@@ -1594,6 +1842,103 @@
                 <div id="findphone-login-error" class="findphone-login-error" style="display:none;">账号或密码错误</div>
                 <button class="findphone-login-btn" onclick="findPhoneWechatLogin()">登录</button>
                 <button class="findphone-login-cancel" onclick="closeFindPhoneLogin()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 查手机 - 桌面设置 -->
+    <div class="wechat-page fp-desktop-settings-page" id="findphone-desktop-settings" style="display:none; z-index:320;">
+        <div class="fp-desktop-settings-nav">
+            <button type="button" class="fp-desktop-settings-back" onclick="closeFindPhoneDesktopSettings()" aria-label="返回桌面">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <div class="fp-desktop-settings-title">桌面设置</div>
+            <div class="fp-desktop-settings-nav-space"></div>
+        </div>
+        <div class="fp-desktop-settings-main">
+            <div class="fp-desktop-settings-owner" id="fp-desktop-settings-owner">当前角色的手机桌面</div>
+            <div class="fp-desktop-settings-card">
+                <button type="button" class="fp-desktop-settings-row" id="fp-desktop-lock-row" onclick="toggleFindPhoneDesktopLock()" aria-pressed="false">
+                    <span class="fp-desktop-settings-row-icon lock">
+                        <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+                    </span>
+                    <span class="fp-desktop-settings-copy">
+                        <strong id="fp-desktop-lock-title">锁定桌面</strong>
+                        <small id="fp-desktop-lock-description">锁定状态将被保存，供后续功能使用</small>
+                    </span>
+                    <span class="fp-desktop-settings-switch" id="fp-desktop-lock-switch"><i></i></span>
+                </button>
+            </div>
+            <div class="fp-desktop-settings-card">
+                <button type="button" class="fp-desktop-settings-row regenerate" id="fp-desktop-regenerate-button" onclick="regenerateFindPhoneDesktop()">
+                    <span class="fp-desktop-settings-row-icon refresh">
+                        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0 1.5 4.6"></path><polyline points="20 4 20 11 13 11"></polyline></svg>
+                    </span>
+                    <span class="fp-desktop-settings-copy">
+                        <strong>重新生成桌面</strong>
+                        <small>重新选择壁纸、图标和角色常用软件</small>
+                    </span>
+                    <span class="fp-desktop-settings-chevron">›</span>
+                </button>
+            </div>
+            <p class="fp-desktop-settings-note">无论是否锁定，重新进入“查手机”都不会自动生成。只有点击“重新生成桌面”才会更新。</p>
+        </div>
+        <div class="fp-desktop-settings-loading" id="fp-desktop-settings-loading" style="display:none;">
+            <div class="findphone-generating-card">
+                <div class="findphone-generating-spinner"></div>
+                <div class="findphone-generating-title">正在重新生成桌面</div>
+                <div class="findphone-generating-subtitle">完成后将自动保存</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 查手机 - 动态生成的软件模拟页面 -->
+    <div class="wechat-page fp-sim-app-page" id="fp-generated-app-page" style="display:none; z-index:325;">
+        <div class="fp-sim-nav">
+            <button type="button" class="fp-sim-back" onclick="closeFindPhoneGeneratedApp()" aria-label="返回桌面">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <div class="fp-sim-nav-title-wrap">
+                <div class="fp-sim-nav-title" id="fp-sim-nav-title">应用</div>
+                <div class="fp-sim-nav-subtitle" id="fp-sim-nav-subtitle">模拟页面</div>
+            </div>
+            <button type="button" class="fp-sim-refresh" onclick="regenerateFindPhoneGeneratedApp()" aria-label="重新生成">
+                <svg viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 1 0 2 5.3"></path><polyline points="20 4 20 11 13 11"></polyline></svg>
+            </button>
+        </div>
+
+        <div class="fp-sim-main">
+            <div class="fp-sim-hero" id="fp-sim-hero">
+                <div class="fp-sim-hero-icon" id="fp-sim-hero-icon">App</div>
+                <div class="fp-sim-hero-copy">
+                    <div class="fp-sim-hero-title" id="fp-sim-hero-title">应用</div>
+                    <div class="fp-sim-hero-subtitle" id="fp-sim-hero-subtitle">正在准备模拟内容</div>
+                </div>
+            </div>
+            <label class="fp-sim-search">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.2" y2="16.2"></line></svg>
+                <input id="fp-sim-search-input" type="search" placeholder="搜索页面内容" oninput="filterFindPhoneSimItems(this.value)">
+            </label>
+            <div class="fp-sim-tabs" id="fp-sim-tabs"></div>
+            <div class="fp-sim-content" id="fp-sim-content"></div>
+        </div>
+
+        <div class="fp-sim-loading" id="fp-sim-loading" style="display:none;">
+            <div class="fp-sim-loading-spinner"></div>
+            <div class="fp-sim-loading-title" id="fp-sim-loading-title">正在构建应用页面</div>
+            <div class="fp-sim-loading-subtitle">正在准备可交互的功能与内容…</div>
+        </div>
+
+        <div class="fp-sim-detail-overlay" id="fp-sim-detail-overlay" style="display:none;" onclick="if(event.target===this)closeFindPhoneSimDetail()">
+            <div class="fp-sim-detail-sheet">
+                <div class="fp-sim-detail-handle"></div>
+                <button type="button" class="fp-sim-detail-close" onclick="closeFindPhoneSimDetail()">×</button>
+                <div class="fp-sim-detail-badge" id="fp-sim-detail-badge"></div>
+                <div class="fp-sim-detail-title" id="fp-sim-detail-title"></div>
+                <div class="fp-sim-detail-subtitle" id="fp-sim-detail-subtitle"></div>
+                <div class="fp-sim-detail-text" id="fp-sim-detail-text"></div>
+                <button type="button" class="fp-sim-detail-action" id="fp-sim-detail-action" onclick="runFindPhoneSimAction()">查看</button>
+                <div class="fp-sim-detail-result" id="fp-sim-detail-result" style="display:none;"></div>
             </div>
         </div>
     </div>
@@ -2159,26 +2504,37 @@
                 </div>
             </div>
             
-            <!-- 当前心声区域 -->
-            <div class="thoughts-current" id="thoughts-current">
-                <div class="thoughts-current-text" id="thoughts-current-text">暂无心声</div>
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div class="thoughts-current-time" id="thoughts-current-time"></div>
-                    <div id="thoughts-current-delete" style="font-size:12px; color:#ff3b30; cursor:pointer; padding:2px 8px; display:none;" onclick="deleteCurrentThought()">删除</div>
+            <!-- 横向切换：心声 / 活动 -->
+            <div class="thoughts-tabs">
+                <div class="thoughts-tab active" id="thoughts-tab-thoughts" onclick="switchThoughtsTab('thoughts')">心声</div>
+                <div class="thoughts-tab" id="thoughts-tab-activities" onclick="switchThoughtsTab('activities')">活动</div>
+            </div>
+
+            <!-- 心声内容区 -->
+            <div id="thoughts-pane-thoughts" style="display:block;">
+                <div class="thoughts-current" id="thoughts-current">
+                    <div class="thoughts-current-text" id="thoughts-current-text">暂无心声</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="thoughts-current-time" id="thoughts-current-time"></div>
+                        <div id="thoughts-current-delete" style="font-size:12px; color:#ff3b30; cursor:pointer; padding:2px 8px; display:none;" onclick="deleteCurrentThought()">删除</div>
+                    </div>
+                </div>
+                
+                <div class="thoughts-history-btn" id="thoughts-history-btn" onclick="toggleThoughtsHistory()">
+                    <span>查看历史心声</span>
+                    <svg class="thoughts-arrow" id="thoughts-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+                
+                <div class="thoughts-history" id="thoughts-history" style="display:none;">
+                    <div id="thoughts-history-content">
+                        <!-- 动态生成 -->
+                    </div>
                 </div>
             </div>
-            
-            <!-- 查看历史按钮 -->
-            <div class="thoughts-history-btn" id="thoughts-history-btn" onclick="toggleThoughtsHistory()">
-                <span>查看历史心声</span>
-                <svg class="thoughts-arrow" id="thoughts-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </div>
-            
-            <!-- 历史心声区域（默认隐藏） -->
-            <div class="thoughts-history" id="thoughts-history" style="display:none;">
-                <div id="thoughts-history-content">
-                    <!-- 动态生成 -->
-                </div>
+
+            <!-- 活动内容区 -->
+            <div id="thoughts-pane-activities" style="display:none;">
+                <div class="thoughts-activity-list" id="thoughts-activity-list"></div>
             </div>
         </div>
     </div>
@@ -2512,6 +2868,12 @@
                                     </div>
                                     <div class="action-name">默契绘画</div>
                                 </div>
+                                <div class="action-item" onclick="showScreenShareCallFromChatMenu()">
+                                    <div class="action-icon-box">
+                                        <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 20h8"></path><path d="M12 17v3"></path></svg>
+                                    </div>
+                                    <div class="action-name">屏幕共享</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2661,6 +3023,16 @@
                         <div class="detail-arrow">›</div>
                     </div>
                 </div>
+                <div class="detail-item" onclick="showLinkWorldUserModal()" style="cursor:pointer;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div>关联另一个User账号</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">共享同一世界记忆，但保留不同用户关系</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <div id="detail-linked-world-users" style="font-size:14px; color:#999;">未关联</div>
+                        <div class="detail-arrow">›</div>
+                    </div>
+                </div>
             </div>
 
             <!-- 主动聊天设置 -->
@@ -2724,7 +3096,7 @@
                 <div class="detail-item">
                     <div style="display:flex; flex-direction:column; gap:4px;">
                         <div>允许角色查岗</div>
-                        <div style="font-size:12px; color:#999; line-height:1.4;">角色可根据剧情尝试登录你的账号</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">角色可在线上尝试登录，或在线下提出查看手机</div>
                     </div>
                     <label class="ios-switch">
                         <input type="checkbox" id="detail-allow-check-switch">
@@ -2734,10 +3106,20 @@
                 <div class="detail-item">
                     <div style="display:flex; flex-direction:column; gap:4px;">
                         <div>允许修罗场模式</div>
-                        <div style="font-size:12px; color:#999; line-height:1.4;">查岗的角色可以操作你的账号</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">查岗后可删除/拉黑好友、代发消息或朋友圈</div>
                     </div>
                     <label class="ios-switch">
                         <input type="checkbox" id="detail-allow-shura-switch">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="detail-item">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div>屏蔽角色查看我朋友圈</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">开启后该角色将看不到你的朋友圈（静默生效）</div>
+                    </div>
+                    <label class="ios-switch">
+                        <input type="checkbox" id="detail-block-moments-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -2746,8 +3128,11 @@
                     <div>• 无密码时：角色可直接"登录"你的账号，你会暂时掉线</div>
                     <div>• 有密码时：角色需猜对密码才能登录，猜错会收到提示</div>
                     <div>• 角色会根据聊天剧情决定是否查岗（如长时间不回等）</div>
+                    <div>• 线下查岗时，你可以选择给或不给手机，并附带文字一起发送</div>
+                    <div>• 线下授权只对下一次回复有效，角色查完后会自动回到普通线下剧情</div>
                     <div style="margin-top:6px; color:#ff6b9d; font-weight:600;">• 修罗场模式：查岗的角色可以操作你的账号</div>
                     <div style="color:#ff6b9d;">• 发朋友圈：修罗场下角色可以用你的账号发朋友圈（不会生成评论）</div>
+                    <div style="margin-top:6px;">• “屏蔽角色查看我朋友圈”是静默设置，不会立即发送提示给角色</div>
                 </div>
             </div>
 
@@ -2776,19 +3161,27 @@
                 <div class="detail-item">
                     <div style="display:flex; flex-direction:column; gap:4px;">
                         <div>允许角色自主活动</div>
-                        <div style="font-size:12px; color:#999; line-height:1.4;">角色会在自己的手机上自主产生活动数据</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">角色会自主生活，并使用自己手机里的应用</div>
                     </div>
                     <label class="ios-switch">
                         <input type="checkbox" id="detail-allow-autonomous-switch">
                         <span class="slider"></span>
                     </label>
                 </div>
+                <div class="detail-item" id="detail-regenerate-autonomous" onclick="manualRegenerateAutonomousActivity()" style="cursor:pointer;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <div id="detail-regenerate-autonomous-title">重新生成一轮自主行动</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">按最新记忆、手机桌面和活动上下文生成，并分散记录时间</div>
+                    </div>
+                    <div style="color:#ffb6c1; font-size:20px;">›</div>
+                </div>
                 <div style="padding:12px 16px; font-size:12px; color:#999; line-height:1.6; background:#f8f8f8; border-radius:8px; margin:0 16px 12px 16px;">
                     <div style="font-weight:600; color:#666; margin-bottom:6px;">功能说明：</div>
-                    <div>• 开启后角色在聊天中可能会自主使用手机</div>
-                    <div>• AI会根据剧情决定角色的手机活动（发朋友圈、和好友聊天等）</div>
-                    <div>• 生成的数据会追加到"查手机"中，不会覆盖已有数据</div>
-                    <div style="margin-top:6px; color:#ff6b9d; font-weight:600;">• 你去查手机时就能看到角色自主产生的活动记录</div>
+                    <div>• 聊天过程中，角色会根据剧情决定是否自主行动</div>
+                    <div>• 可以记录线下生活、聊天、朋友圈和APP使用情况</div>
+                    <div>• APP中的战绩、播放记录等只会增量追加，不覆盖旧数据</div>
+                    <div>• 单轮事件会分散在合理时间段内，不会全部挤在生成时刻</div>
+                    <div style="margin-top:6px; color:#ff6b9d; font-weight:600;">• 点击角色头像的“活动”，可以查看这些自主经历</div>
                 </div>
             </div>
 
@@ -2797,7 +3190,7 @@
                 <div class="detail-item">
                     <div style="display:flex; flex-direction:column; gap:4px;">
                         <div>定时自主活动</div>
-                        <div style="font-size:12px; color:#999; line-height:1.4;">定时调用API让角色自主产生手机活动</div>
+                        <div style="font-size:12px; color:#999; line-height:1.4;">按设定间隔调用接口，让角色继续自己的生活</div>
                     </div>
                     <label class="ios-switch">
                         <input type="checkbox" id="detail-scheduled-activity-switch">
@@ -2811,9 +3204,10 @@
                 <div style="padding:12px 16px; font-size:12px; color:#999; line-height:1.6; background:#f8f8f8; border-radius:8px; margin:0 16px 12px 16px;">
                     <div style="font-weight:600; color:#666; margin-bottom:6px;">功能说明：</div>
                     <div>• 开启后每隔设定的分钟数自动调用一次API</div>
-                    <div>• AI会根据角色人设和当前时间自动生成手机活动数据</div>
-                    <div>• 生成的数据会追加到"查手机"中，不会覆盖已有数据</div>
-                    <div style="margin-top:6px; color:#ff6b9d; font-weight:600;">• 即使你不聊天，角色也会自主产生活动记录</div>
+                    <div>• 会根据角色人设、当前时间、最近活动和手机数据生成行动</div>
+                    <div>• 可能使用、安装或卸载APP，并更新对应APP的原有内容</div>
+                    <div>• 行动时间会分布在本次触发间隔内，间隔越短单轮事件越少</div>
+                    <div style="margin-top:6px; color:#ff6b9d; font-weight:600;">• 开启保活后，即使不聊天也会按间隔继续产生记录</div>
                 </div>
             </div>
 
@@ -2966,11 +3360,11 @@
                 </div>
             </div>
 
-            <!-- 视频通话 NovelAI 生图设置 -->
+            <!-- 视频通话生图设置（跟随全局图片提供方） -->
             <div class="detail-group">
                 <div class="detail-item">
                     <div style="display:flex; flex-direction:column; gap:4px;">
-                        <div>视频通话 NovelAI 生图</div>
+                        <div>视频通话自动生图</div>
                         <div style="font-size:12px; color:#999; line-height:1.4;">开启后视频通话时根据AI回复自动生成角色图片</div>
                     </div>
                     <label class="ios-switch">
@@ -2980,7 +3374,7 @@
                 </div>
                 <div style="padding:12px 16px; font-size:12px; color:#999; line-height:1.6; background:#f8f8f8; border-radius:8px; margin:0 16px 12px 16px;">
                     <div style="font-weight:600; color:#666; margin-bottom:6px;">功能说明：</div>
-                    <div>• 需要先在设置页面配置 NovelAI API Key</div>
+                    <div>• 使用设置页面当前启用的图片提供方（NovelAI 或 GPT）</div>
                     <div>• 视频通话中每次角色回复后，会根据内容自动生成图片</div>
                     <div>• 只有角色画面会变化，用户画面保持不变</div>
                     <div>• 生图过程中角色画面会显示加载动画</div>
@@ -3482,6 +3876,21 @@
             <div style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="hideMountUserModal()" style="flex:1; padding:12px; background:#f2f2f7; border:none; border-radius:8px; font-size:15px; font-weight:500;">取消</button>
                 <button onclick="unmountUser()" style="flex:1; padding:12px; background:#f2f2f7; color:#ff3b30; border:none; border-radius:8px; font-size:15px; font-weight:500;">卸载</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 关联世界User账号弹窗 -->
+    <div id="link-world-user-modal" class="sticker-modal-overlay" style="display:none;">
+        <div class="sticker-modal-box" style="max-height:80vh; overflow-y:auto;">
+            <h3 style="text-align:center; margin-bottom:20px; font-size:18px; font-weight:600;">关联另一个User账号</h3>
+            <div style="font-size:13px; color:#666; margin-bottom:16px; text-align:center;">关联后将共享该角色的世界记忆（关系记忆仍按当前User区分）</div>
+            <div id="link-world-user-list" style="display:flex; flex-direction:column; gap:8px;">
+                <!-- 动态生成 -->
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="hideLinkWorldUserModal()" style="flex:1; padding:12px; background:#f2f2f7; border:none; border-radius:8px; font-size:15px; font-weight:500;">取消</button>
+                <button onclick="clearLinkedWorldUsers()" style="flex:1; padding:12px; background:#f2f2f7; color:#ff3b30; border:none; border-radius:8px; font-size:15px; font-weight:500;">清除关联</button>
             </div>
         </div>
     </div>
@@ -5411,6 +5820,14 @@
 
                 <!-- 输入框区域 -->
                 <div id="video-input-bar" style="position: absolute; bottom: 20px; left: 0; width: 100%; padding: 0 15px; display: flex; align-items: center; gap: 10px; z-index: 10; transition: bottom 0.2s ease; box-sizing: border-box;">
+                    <button id="video-stt-btn" onclick="toggleVideoSpeechToText()" title="语音转文字" style="width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; backdrop-filter: blur(10px);">
+                        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; stroke: #FFFFFF; fill: none; stroke-width: 2;">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                    </button>
                     <input type="text" id="video-msg-input" placeholder="输入文字消息..." onfocus="onVideoInputFocus()" onblur="onVideoInputBlur()" style="flex: 1; height: 42px; padding: 0 16px; border-radius: 21px; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,255,255,0.15); font-size: 16px; color: #fff; outline: none; transition: border-color 0.2s ease; backdrop-filter: blur(10px);">
                     <button onclick="sendVideoMessage()" style="width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); background-color: rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; backdrop-filter: blur(10px);">
                         <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: #FFFFFF;">
@@ -8134,14 +8551,14 @@
     <!-- 网易云音乐播放器 JS（独立文件） -->
     <script src="wyy.js"></script>
     <!-- 角色档案 JS（独立文件） -->
-    <script src="character.js"></script>
+    <script src="character.js?v=6.2"></script>
     <!-- icity 日记应用 JS（独立文件） -->
     <script src="icity.js"></script>
     <!-- 闲鱼 App JS（独立文件） -->
     <script src="xianyu.js"></script>
     <!-- 小屋功能 JS（独立文件） -->
     <script src="cabin.js"></script>
-    <script src="script.js" defer></script>
+    <script src="script.js?v=6.2" defer></script>
     
 
 </body>

@@ -357,6 +357,7 @@
             document.getElementById('home-page').style.display = 'none';
             document.getElementById('custom-main-page').style.display = 'flex';
             syncPreview();
+            loadDesktopImageAtlas();
             // 加载聊天主题列表
             loadChatThemeList();
             // 初始化主题预览
@@ -513,6 +514,443 @@
                 onApply: (url) => applyIcon(iconId, url, el)
             });
         }
+
+        // ===== 图集：供“查手机”桌面 AI 按关键词选择壁纸和图标 =====
+        const DESKTOP_IMAGE_ATLAS_KEY = 'desktopImageAtlas';
+        let desktopImageAtlasStore = { version: 2, categories: [], items: [] };
+        let currentDesktopAtlasCategoryId = null;
+        let currentDesktopAtlasItemType = 'wallpaper';
+
+        function createDesktopAtlasId(prefix = 'atlas') {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                return `${prefix}_${window.crypto.randomUUID()}`;
+            }
+            return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+        }
+
+        function normalizeDesktopImageAtlas(value) {
+            let raw = value;
+            if (typeof raw === 'string') {
+                try { raw = JSON.parse(raw); } catch (_) { raw = null; }
+            }
+
+            let rawCategories = [];
+            let rawItems = [];
+            if (Array.isArray(raw)) {
+                rawItems = raw;
+            } else if (raw && typeof raw === 'object') {
+                rawCategories = Array.isArray(raw.categories) ? raw.categories : [];
+                rawItems = Array.isArray(raw.items) ? raw.items : [];
+            }
+
+            const categories = [];
+            const categoryIds = new Set();
+            rawCategories.forEach(category => {
+                if (!category || !category.id) return;
+                const id = String(category.id);
+                const name = String(category.name || '').trim().replace(/[\r\n]/g, ' ').substring(0, 40);
+                if (!name || categoryIds.has(id)) return;
+                categoryIds.add(id);
+                categories.push({
+                    id,
+                    name,
+                    createdAt: Number(category.createdAt) || Date.now()
+                });
+            });
+
+            const validItems = rawItems.filter(item => item && item.id && item.url && (item.type === 'icon' || item.type === 'wallpaper'));
+            if (validItems.length > 0 && categories.length === 0) {
+                const defaultCategory = { id: 'atlas_category_default', name: '默认图集', createdAt: Date.now() };
+                categories.push(defaultCategory);
+                categoryIds.add(defaultCategory.id);
+            }
+            const fallbackCategoryId = categories[0]?.id || null;
+            const items = validItems.map(item => ({
+                id: String(item.id),
+                categoryId: categoryIds.has(String(item.categoryId)) ? String(item.categoryId) : fallbackCategoryId,
+                type: item.type,
+                url: String(item.url),
+                keywords: String(item.keywords || '').trim().substring(0, 240),
+                sourceName: String(item.sourceName || '').substring(0, 100),
+                createdAt: Number(item.createdAt) || Date.now()
+            })).filter(item => item.categoryId);
+
+            return { version: 2, categories, items };
+        }
+
+        async function loadDesktopImageAtlasStore() {
+            try {
+                const record = await db.dexiData.get(DESKTOP_IMAGE_ATLAS_KEY);
+                desktopImageAtlasStore = normalizeDesktopImageAtlas(record?.value);
+                if (Array.isArray(record?.value)) {
+                    await db.dexiData.put({ key: DESKTOP_IMAGE_ATLAS_KEY, value: desktopImageAtlasStore });
+                }
+            } catch (error) {
+                console.error('[图集] 读取失败:', error);
+                desktopImageAtlasStore = { version: 2, categories: [], items: [] };
+            }
+            return desktopImageAtlasStore;
+        }
+
+        async function saveDesktopImageAtlasStore(store = desktopImageAtlasStore) {
+            desktopImageAtlasStore = normalizeDesktopImageAtlas(store);
+            await db.dexiData.put({ key: DESKTOP_IMAGE_ATLAS_KEY, value: desktopImageAtlasStore });
+        }
+
+        async function getDesktopImageAtlas() {
+            const store = await loadDesktopImageAtlasStore();
+            const categoryNames = new Map(store.categories.map(category => [category.id, category.name]));
+            return store.items.map(item => ({
+                ...item,
+                categoryName: categoryNames.get(item.categoryId) || ''
+            }));
+        }
+
+        async function loadDesktopImageAtlas() {
+            const items = await getDesktopImageAtlas();
+            const atlasPage = document.getElementById('desktop-atlas-page');
+            if (atlasPage && getComputedStyle(atlasPage).display !== 'none') {
+                await renderDesktopAtlasCategories();
+            }
+            return items;
+        }
+
+        async function showDesktopAtlasPage() {
+            const customPage = document.getElementById('custom-main-page');
+            const atlasPage = document.getElementById('desktop-atlas-page');
+            if (customPage) customPage.style.display = 'none';
+            if (atlasPage) atlasPage.style.display = 'flex';
+            currentDesktopAtlasCategoryId = null;
+            document.getElementById('desktop-atlas-category-view').style.display = 'flex';
+            document.getElementById('desktop-atlas-detail-view').style.display = 'none';
+            await renderDesktopAtlasCategories();
+        }
+
+        function hideDesktopAtlasPage() {
+            const atlasPage = document.getElementById('desktop-atlas-page');
+            const customPage = document.getElementById('custom-main-page');
+            if (atlasPage) atlasPage.style.display = 'none';
+            if (customPage) customPage.style.display = 'flex';
+            currentDesktopAtlasCategoryId = null;
+        }
+
+        async function createDesktopAtlasCategory() {
+            const inputName = prompt('请输入新图集分类名称：', '我的图集');
+            if (inputName === null) return;
+            const name = inputName.trim().replace(/[\r\n]/g, ' ').substring(0, 40);
+            if (!name) {
+                showToast('分类名称不能为空');
+                return;
+            }
+            const store = await loadDesktopImageAtlasStore();
+            if (store.categories.some(category => category.name.toLowerCase() === name.toLowerCase())) {
+                showToast('已经有同名分类了');
+                return;
+            }
+            const category = { id: createDesktopAtlasId('atlas_category'), name, createdAt: Date.now() };
+            store.categories.unshift(category);
+            await saveDesktopImageAtlasStore(store);
+            await openDesktopAtlasCategory(category.id);
+            showToast('✅ 图集分类已创建');
+        }
+
+        async function renderDesktopAtlasCategories() {
+            const container = document.getElementById('desktop-atlas-category-list');
+            if (!container) return;
+            const store = await loadDesktopImageAtlasStore();
+            container.replaceChildren();
+
+            if (store.categories.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-atlas-empty';
+                empty.textContent = '还没有分类，点击右上角“新建分类”开始添加';
+                container.appendChild(empty);
+                return;
+            }
+
+            store.categories.forEach(category => {
+                const categoryItems = store.items.filter(item => item.categoryId === category.id);
+                const wallpapers = categoryItems.filter(item => item.type === 'wallpaper').length;
+                const icons = categoryItems.filter(item => item.type === 'icon').length;
+                const card = document.createElement('div');
+                card.className = 'desktop-atlas-category-card';
+                card.addEventListener('click', () => openDesktopAtlasCategory(category.id));
+
+                const cover = document.createElement('div');
+                cover.className = 'desktop-atlas-category-cover';
+                categoryItems.slice(0, 2).forEach(item => {
+                    const thumb = document.createElement('div');
+                    thumb.className = 'desktop-atlas-category-thumb';
+                    thumb.style.backgroundImage = 'url(' + JSON.stringify(item.url) + ')';
+                    cover.appendChild(thumb);
+                });
+                if (categoryItems.length === 0) {
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'desktop-atlas-category-thumb';
+                    cover.appendChild(placeholder);
+                }
+
+                const info = document.createElement('div');
+                info.className = 'desktop-atlas-category-info';
+                const title = document.createElement('div');
+                title.className = 'desktop-atlas-category-name';
+                title.textContent = category.name;
+                const counts = document.createElement('div');
+                counts.className = 'desktop-atlas-category-counts';
+                counts.textContent = `壁纸 ${wallpapers} · 图标 ${icons}`;
+                info.append(title, counts);
+
+                const arrow = document.createElement('div');
+                arrow.className = 'desktop-atlas-category-arrow';
+                arrow.textContent = '›';
+                card.append(cover, info, arrow);
+                container.appendChild(card);
+            });
+        }
+
+        async function openDesktopAtlasCategory(categoryId) {
+            const store = await loadDesktopImageAtlasStore();
+            const category = store.categories.find(entry => entry.id === String(categoryId));
+            if (!category) return;
+            currentDesktopAtlasCategoryId = category.id;
+            document.getElementById('desktop-atlas-category-view').style.display = 'none';
+            document.getElementById('desktop-atlas-detail-view').style.display = 'flex';
+            setDesktopAtlasItemType('wallpaper');
+            await renderDesktopAtlasCategoryDetail();
+        }
+
+        async function backToDesktopAtlasCategories() {
+            currentDesktopAtlasCategoryId = null;
+            document.getElementById('desktop-atlas-category-view').style.display = 'flex';
+            document.getElementById('desktop-atlas-detail-view').style.display = 'none';
+            await renderDesktopAtlasCategories();
+        }
+
+        async function renameDesktopAtlasCategory() {
+            const store = await loadDesktopImageAtlasStore();
+            const category = store.categories.find(entry => entry.id === currentDesktopAtlasCategoryId);
+            if (!category) return;
+            const inputName = prompt('修改分类名称：', category.name);
+            if (inputName === null) return;
+            const name = inputName.trim().replace(/[\r\n]/g, ' ').substring(0, 40);
+            if (!name) {
+                showToast('分类名称不能为空');
+                return;
+            }
+            if (store.categories.some(entry => entry.id !== category.id && entry.name.toLowerCase() === name.toLowerCase())) {
+                showToast('已经有同名分类了');
+                return;
+            }
+            category.name = name;
+            await saveDesktopImageAtlasStore(store);
+            await renderDesktopAtlasCategoryDetail();
+            showToast('✅ 分类名称已更新');
+        }
+
+        async function deleteDesktopAtlasCategory() {
+            const store = await loadDesktopImageAtlasStore();
+            const category = store.categories.find(entry => entry.id === currentDesktopAtlasCategoryId);
+            if (!category) return;
+            const itemCount = store.items.filter(item => item.categoryId === category.id).length;
+            if (!confirm(`确定删除“${category.name}”吗？其中 ${itemCount} 张素材也会一起删除。`)) return;
+            store.categories = store.categories.filter(entry => entry.id !== category.id);
+            store.items = store.items.filter(item => item.categoryId !== category.id);
+            await saveDesktopImageAtlasStore(store);
+            await backToDesktopAtlasCategories();
+            showToast('已删除图集分类');
+        }
+
+        function setDesktopAtlasItemType(type) {
+            currentDesktopAtlasItemType = type === 'icon' ? 'icon' : 'wallpaper';
+            const wallpaperButton = document.getElementById('desktop-atlas-type-wallpaper');
+            const iconButton = document.getElementById('desktop-atlas-type-icon');
+            wallpaperButton?.classList.toggle('active', currentDesktopAtlasItemType === 'wallpaper');
+            iconButton?.classList.toggle('active', currentDesktopAtlasItemType === 'icon');
+        }
+
+        function getDesktopAtlasFormData() {
+            const keywords = document.getElementById('desktop-atlas-keywords')?.value?.trim().replace(/\s+/g, ' ') || '';
+            return { type: currentDesktopAtlasItemType, keywords: keywords.substring(0, 240) };
+        }
+
+        async function appendDesktopAtlasItem(url, sourceName) {
+            if (!currentDesktopAtlasCategoryId) {
+                showToast('请先选择一个图集分类');
+                return false;
+            }
+            const { type, keywords } = getDesktopAtlasFormData();
+            if (!keywords) {
+                showToast('请先填写便于 AI 识别的关键词');
+                return false;
+            }
+            const cleanUrl = String(url || '').trim();
+            if (!cleanUrl) {
+                showToast('请选择图片或填写图片链接');
+                return false;
+            }
+
+            const store = await loadDesktopImageAtlasStore();
+            if (!store.categories.some(category => category.id === currentDesktopAtlasCategoryId)) return false;
+            store.items.unshift({
+                id: createDesktopAtlasId(),
+                categoryId: currentDesktopAtlasCategoryId,
+                type,
+                url: cleanUrl,
+                keywords,
+                sourceName: String(sourceName || '').substring(0, 100),
+                createdAt: Date.now()
+            });
+            await saveDesktopImageAtlasStore(store);
+
+            const keywordInput = document.getElementById('desktop-atlas-keywords');
+            const urlInput = document.getElementById('desktop-atlas-url');
+            if (keywordInput) keywordInput.value = '';
+            if (urlInput) urlInput.value = '';
+            await renderDesktopAtlasCategoryDetail();
+            showToast(type === 'icon' ? '✅ 图标已加入当前分类' : '✅ 壁纸已加入当前分类');
+            return true;
+        }
+
+        async function addDesktopAtlasUrl() {
+            const input = document.getElementById('desktop-atlas-url');
+            const url = input?.value?.trim() || '';
+            if (!/^https?:\/\//i.test(url) && !/^data:image\//i.test(url)) {
+                showToast('请输入有效的 http/https 图片链接');
+                return;
+            }
+            let sourceName = '图片链接';
+            try { sourceName = new URL(url).hostname || sourceName; } catch (_) {}
+            try {
+                await appendDesktopAtlasItem(url, sourceName);
+            } catch (error) {
+                console.error('[图集] 添加链接失败:', error);
+                showToast('❌ 图集保存失败');
+            }
+        }
+
+        async function addDesktopAtlasUpload(input) {
+            const file = input?.files?.[0];
+            if (!file) return;
+            const { type, keywords } = getDesktopAtlasFormData();
+            if (!keywords) {
+                showToast('请先填写便于 AI 识别的关键词');
+                input.value = '';
+                return;
+            }
+            try {
+                const dataUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = () => reject(reader.error || new Error('读取图片失败'));
+                    reader.readAsDataURL(file);
+                });
+                const maxWidth = type === 'icon' ? 512 : 1600;
+                const quality = type === 'icon' ? 0.86 : 0.82;
+                const imageUrl = typeof compressImage === 'function'
+                    ? await compressImage(dataUrl, maxWidth, quality)
+                    : dataUrl;
+                await appendDesktopAtlasItem(imageUrl, file.name || '本地上传');
+            } catch (error) {
+                console.error('[图集] 上传失败:', error);
+                showToast('❌ 图片上传失败');
+            } finally {
+                input.value = '';
+            }
+        }
+
+        function createDesktopAtlasMediaCard(item) {
+            const card = document.createElement('div');
+            card.className = 'desktop-atlas-card';
+            const preview = document.createElement('div');
+            preview.className = 'desktop-atlas-preview';
+            preview.style.backgroundImage = 'url(' + JSON.stringify(item.url) + ')';
+            const meta = document.createElement('div');
+            meta.className = 'desktop-atlas-meta';
+            const keywords = document.createElement('div');
+            keywords.className = 'desktop-atlas-keywords';
+            keywords.textContent = item.keywords || '未填写关键词';
+            const actions = document.createElement('div');
+            actions.className = 'desktop-atlas-card-actions';
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.textContent = '改关键词';
+            editButton.addEventListener('click', () => editDesktopAtlasKeywords(item.id));
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'danger';
+            deleteButton.textContent = '删除';
+            deleteButton.addEventListener('click', () => deleteDesktopAtlasItem(item.id));
+            actions.append(editButton, deleteButton);
+            meta.append(keywords, actions);
+            card.append(preview, meta);
+            return card;
+        }
+
+        function renderDesktopAtlasMediaList(container, items, emptyText) {
+            container.replaceChildren();
+            if (items.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'desktop-atlas-empty';
+                empty.textContent = emptyText;
+                container.appendChild(empty);
+                return;
+            }
+            items.forEach(item => container.appendChild(createDesktopAtlasMediaCard(item)));
+        }
+
+        async function renderDesktopAtlasCategoryDetail() {
+            const store = await loadDesktopImageAtlasStore();
+            const category = store.categories.find(entry => entry.id === currentDesktopAtlasCategoryId);
+            if (!category) return;
+            const title = document.getElementById('desktop-atlas-detail-title');
+            if (title) title.textContent = category.name;
+            const categoryItems = store.items.filter(item => item.categoryId === category.id);
+            const wallpapers = categoryItems.filter(item => item.type === 'wallpaper');
+            const icons = categoryItems.filter(item => item.type === 'icon');
+            document.getElementById('desktop-atlas-wallpaper-count').textContent = `${wallpapers.length} 张`;
+            document.getElementById('desktop-atlas-icon-count').textContent = `${icons.length} 张`;
+            renderDesktopAtlasMediaList(document.getElementById('desktop-atlas-wallpaper-list'), wallpapers, '这个分类还没有壁纸');
+            renderDesktopAtlasMediaList(document.getElementById('desktop-atlas-icon-list'), icons, '这个分类还没有图标');
+        }
+
+        async function editDesktopAtlasKeywords(itemId) {
+            const store = await loadDesktopImageAtlasStore();
+            const item = store.items.find(entry => entry.id === itemId);
+            if (!item) return;
+            const nextKeywords = prompt('修改 AI 识别关键词：', item.keywords || '');
+            if (nextKeywords === null) return;
+            const cleanKeywords = nextKeywords.trim().replace(/\s+/g, ' ').substring(0, 240);
+            if (!cleanKeywords) {
+                showToast('关键词不能为空');
+                return;
+            }
+            item.keywords = cleanKeywords;
+            await saveDesktopImageAtlasStore(store);
+            await renderDesktopAtlasCategoryDetail();
+            showToast('✅ 关键词已更新');
+        }
+
+        async function deleteDesktopAtlasItem(itemId) {
+            if (!confirm('确定删除这张图集素材吗？')) return;
+            const store = await loadDesktopImageAtlasStore();
+            store.items = store.items.filter(item => item.id !== itemId);
+            await saveDesktopImageAtlasStore(store);
+            await renderDesktopAtlasCategoryDetail();
+            showToast('已删除图集素材');
+        }
+
+        window.getDesktopImageAtlas = getDesktopImageAtlas;
+        window.loadDesktopImageAtlas = loadDesktopImageAtlas;
+        window.showDesktopAtlasPage = showDesktopAtlasPage;
+        window.hideDesktopAtlasPage = hideDesktopAtlasPage;
+        window.createDesktopAtlasCategory = createDesktopAtlasCategory;
+        window.openDesktopAtlasCategory = openDesktopAtlasCategory;
+        window.backToDesktopAtlasCategories = backToDesktopAtlasCategories;
+        window.renameDesktopAtlasCategory = renameDesktopAtlasCategory;
+        window.deleteDesktopAtlasCategory = deleteDesktopAtlasCategory;
+        window.setDesktopAtlasItemType = setDesktopAtlasItemType;
+        window.addDesktopAtlasUrl = addDesktopAtlasUrl;
+        window.addDesktopAtlasUpload = addDesktopAtlasUpload;
         
         // 自动保存个性化设置（防抖，避免频繁写入）
         let _autoSaveTimer = null;

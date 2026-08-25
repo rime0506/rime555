@@ -161,6 +161,12 @@ body {
             touch-action: pan-y pinch-zoom;
             flex: 1;
             min-height: 0;
+            cursor: grab;
+        }
+        .desktop-pages-wrapper.mouse-dragging {
+            cursor: grabbing;
+            user-select: none;
+            -webkit-user-select: none;
         }
         .desktop-pages-track {
             display: flex;
@@ -656,6 +662,66 @@ body {
         }
         .offline-msg-bubble.offline-bubble-self {
             border-bottom-right-radius: 2px;
+        }
+        .offline-phone-request-card {
+            margin: -2px 60px 14px;
+            padding: 13px 14px;
+            border: 1px solid #f1d8e3;
+            border-radius: 12px;
+            background: linear-gradient(145deg, #fff 0%, #fff8fb 100%);
+            box-shadow: 0 3px 12px rgba(224, 120, 155, 0.08);
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .offline-phone-request-title {
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .offline-phone-request-hint {
+            margin-top: 4px;
+            color: #999;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .offline-phone-request-choices {
+            display: flex;
+            gap: 8px;
+            margin-top: 11px;
+        }
+        .offline-phone-choice-btn {
+            flex: 1;
+            padding: 9px 8px;
+            border: 1px solid #eadfe4;
+            border-radius: 9px;
+            background: #fff;
+            color: #666;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .offline-phone-choice-btn.selected {
+            border-color: #e0789b;
+            background: #fff0f6;
+            color: #d45f89;
+            font-weight: 600;
+        }
+        .offline-phone-action-log {
+            margin: -2px 58px 14px;
+            padding: 10px 12px;
+            border-radius: 9px;
+            background: #f7f7f7;
+            color: #777;
+            font-size: 12px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        @media (max-width: 420px) {
+            .offline-phone-request-card,
+            .offline-phone-action-log {
+                margin-left: 16px;
+                margin-right: 16px;
+            }
         }
         .image-picker-title {
             font-size: 15px;
@@ -1443,6 +1509,91 @@ body {
         .wechat-menu-icon {
             font-size: 18px;
         }
+
+        .screen-call-page {
+            background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+        }
+        .screen-call-page .wechat-header {
+            background: rgba(17, 24, 39, 0.96);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+        .screen-call-page .wechat-title,
+        .screen-call-page .back-btn {
+            color: #fff !important;
+        }
+        .screen-call-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 12px;
+            overflow: hidden;
+        }
+        .screen-call-video-wrap {
+            position: relative;
+            flex: 1;
+            border-radius: 16px;
+            background: #020617;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        #screen-call-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: #020617;
+            object-fit: cover;
+        }
+        .screen-call-status {
+            position: absolute;
+            left: 12px;
+            top: 12px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.85);
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(2, 6, 23, 0.6);
+            backdrop-filter: blur(4px);
+        }
+        .screen-call-controls {
+            display: flex;
+            gap: 10px;
+        }
+        .screen-call-mic-btn,
+        .screen-call-stop-btn {
+            flex: 1;
+            border: none;
+            height: 44px;
+            border-radius: 12px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        .screen-call-mic-btn {
+            background: #10b981;
+            color: #fff;
+            font-weight: 600;
+        }
+        .screen-call-mic-btn.muted {
+            background: #6b7280;
+        }
+        .screen-call-stop-btn {
+            background: rgba(239, 68, 68, 0.95);
+            color: #fff;
+            font-weight: 600;
+        }
+        .screen-call-reply {
+            min-height: 72px;
+            max-height: 26vh;
+            overflow-y: auto;
+            border-radius: 12px;
+            padding: 12px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #e5e7eb;
+            font-size: 14px;
+            line-height: 1.6;
+        }
         
         /* 搜索好友弹窗 */
         .modal-overlay {
@@ -1558,6 +1709,27 @@ body {
         .thoughts-action-btn:active {
             opacity: 0.6;
         }
+        .thoughts-tabs {
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid #f2f2f2;
+            padding: 0 12px;
+            gap: 8px;
+        }
+        .thoughts-tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px 0;
+            font-size: 14px;
+            color: #999;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        .thoughts-tab.active {
+            color: #333;
+            border-bottom-color: #333;
+            font-weight: 600;
+        }
         .thoughts-current {
             padding: 20px 16px;
             background: #fff;
@@ -1620,6 +1792,32 @@ body {
             margin-bottom: 6px;
         }
         .thoughts-history-time {
+            font-size: 11px;
+            color: #999;
+        }
+        .thoughts-activity-list {
+            max-height: 280px;
+            overflow-y: auto;
+            padding: 10px 16px 16px;
+        }
+        .thoughts-activity-item {
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: #fff;
+        }
+        .thoughts-activity-item:last-child {
+            margin-bottom: 0;
+        }
+        .thoughts-activity-text {
+            font-size: 13px;
+            color: #333;
+            line-height: 1.5;
+            margin-bottom: 6px;
+            word-break: break-word;
+        }
+        .thoughts-activity-time {
             font-size: 11px;
             color: #999;
         }
@@ -2100,17 +2298,26 @@ body {
         .findphone-app-area {
             position: relative; z-index: 1;
             flex: 1;
-            display: flex;
-            align-items: flex-start;
-            justify-content: flex-start;
-            gap: 20px;
-            padding: 50px 30px 0;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(58px, 1fr));
+            align-content: start;
+            column-gap: 10px;
+            row-gap: 22px;
+            padding: 42px 22px 82px;
+            overflow-y: auto;
+            scrollbar-width: none;
+        }
+        .findphone-app-area::-webkit-scrollbar {
+            display: none;
+        }
+        .findphone-generated-apps {
+            display: contents;
         }
         .findphone-app-icon {
             display: flex;
             flex-direction: column;
             align-items: center;
+            min-width: 0;
             cursor: pointer;
             transition: transform 0.15s;
             -webkit-tap-highlight-color: transparent;
@@ -2126,12 +2333,502 @@ body {
             display: flex;
             align-items: center;
             justify-content: center;
+            box-shadow: 0 5px 14px rgba(0,0,0,0.13);
+            overflow: hidden;
         }
+        .findphone-generated-icon {
+            color: #fff;
+            font-size: 27px;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -1px;
+        }
+        .findphone-generated-glyph {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.18);
+        }
+
+        .findphone-settings-icon {
+            background: linear-gradient(145deg, #9da3ad 0%, #68707c 100%);
+        }
+
+        /* ===== 查手机 - 桌面设置 ===== */
+        .fp-desktop-settings-page {
+            flex-direction: column;
+            background: #f4f5f8;
+            color: #202124;
+        }
+        .fp-desktop-settings-nav {
+            height: 58px;
+            padding: 8px 14px 0;
+            display: grid;
+            grid-template-columns: 44px 1fr 44px;
+            align-items: center;
+            background: rgba(255,255,255,0.94);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            flex-shrink: 0;
+        }
+        .fp-desktop-settings-back {
+            width: 40px;
+            height: 40px;
+            border: 0;
+            padding: 8px;
+            background: transparent;
+            color: #25272c;
+            cursor: pointer;
+        }
+        .fp-desktop-settings-back svg {
+            width: 24px;
+            height: 24px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .fp-desktop-settings-title {
+            text-align: center;
+            font-size: 17px;
+            font-weight: 700;
+        }
+        .fp-desktop-settings-nav-space { width: 44px; }
+        .fp-desktop-settings-main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 16px 36px;
+        }
+        .fp-desktop-settings-owner {
+            padding: 0 4px 10px;
+            color: #8a8e98;
+            font-size: 13px;
+        }
+        .fp-desktop-settings-card {
+            overflow: hidden;
+            margin-bottom: 16px;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 7px 24px rgba(29,33,45,0.06);
+        }
+        .fp-desktop-settings-row {
+            width: 100%;
+            min-height: 76px;
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+        .fp-desktop-settings-row:active { background: #f7f7f9; }
+        .fp-desktop-settings-row-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            color: #fff;
+        }
+        .fp-desktop-settings-row-icon.lock { background: linear-gradient(145deg, #737b8a, #4e5665); }
+        .fp-desktop-settings-row-icon.refresh { background: linear-gradient(145deg, #6d8cff, #5268df); }
+        .fp-desktop-settings-row-icon svg {
+            width: 23px;
+            height: 23px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .fp-desktop-settings-copy {
+            min-width: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .fp-desktop-settings-copy strong { font-size: 16px; font-weight: 650; }
+        .fp-desktop-settings-copy small { color: #969aa4; font-size: 12px; line-height: 1.4; }
+        .fp-desktop-settings-switch {
+            width: 48px;
+            height: 28px;
+            padding: 2px;
+            border-radius: 16px;
+            background: #d8dae0;
+            transition: background 0.2s ease;
+            flex-shrink: 0;
+        }
+        .fp-desktop-settings-switch i {
+            display: block;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease;
+        }
+        .fp-desktop-settings-row.locked .fp-desktop-settings-switch { background: #34c759; }
+        .fp-desktop-settings-row.locked .fp-desktop-settings-switch i { transform: translateX(20px); }
+        .fp-desktop-settings-chevron { color: #bbbfc7; font-size: 28px; line-height: 1; }
+        .fp-desktop-settings-row:disabled { opacity: 0.55; cursor: default; }
+        .fp-desktop-settings-note {
+            margin: 2px 4px 0;
+            color: #999da6;
+            font-size: 12px;
+            line-height: 1.65;
+        }
+        .fp-desktop-settings-loading {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(244,245,248,0.84);
+            backdrop-filter: blur(8px);
+        }
+
+        /* ===== 查手机 - 动态软件模拟页面 ===== */
+        .fp-sim-app-page {
+            --fp-sim-primary: #4f6ef7;
+            --fp-sim-accent: #7c91ff;
+            --fp-sim-bg: #f5f6fa;
+            flex-direction: column;
+            background: var(--fp-sim-bg);
+            color: #20222a;
+            overflow: hidden;
+        }
+        .fp-sim-nav {
+            position: relative;
+            z-index: 3;
+            display: grid;
+            grid-template-columns: 42px 1fr 42px;
+            align-items: center;
+            min-height: 88px;
+            padding: 38px 14px 10px;
+            box-sizing: border-box;
+            border-bottom: 1px solid rgba(15,23,42,0.06);
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        .fp-sim-back,
+        .fp-sim-refresh {
+            display: flex;
+            width: 38px;
+            height: 38px;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 12px;
+            color: #30323a;
+            background: rgba(15,23,42,0.045);
+            cursor: pointer;
+        }
+        .fp-sim-back:active,
+        .fp-sim-refresh:active { transform: scale(0.94); }
+        .fp-sim-back svg,
+        .fp-sim-refresh svg {
+            width: 21px;
+            height: 21px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .fp-sim-nav-title-wrap { min-width: 0; text-align: center; }
+        .fp-sim-nav-title {
+            overflow: hidden;
+            color: #20222a;
+            font-size: 16px;
+            font-weight: 700;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fp-sim-nav-subtitle {
+            margin-top: 1px;
+            overflow: hidden;
+            color: #979aa5;
+            font-size: 10px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fp-sim-main {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 14px 14px 34px;
+            scrollbar-width: none;
+        }
+        .fp-sim-main::-webkit-scrollbar { display: none; }
+        .fp-sim-hero {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            padding: 18px;
+            border-radius: 20px;
+            color: #fff;
+            background: linear-gradient(135deg, var(--fp-sim-primary), var(--fp-sim-accent));
+            box-shadow: 0 12px 30px color-mix(in srgb, var(--fp-sim-primary) 22%, transparent);
+        }
+        .fp-sim-hero-icon {
+            display: flex;
+            width: 54px;
+            height: 54px;
+            flex-shrink: 0;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.18);
+            font-size: 24px;
+            font-weight: 800;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.22);
+        }
+        .fp-sim-hero-copy { min-width: 0; }
+        .fp-sim-hero-title {
+            overflow: hidden;
+            font-size: 19px;
+            font-weight: 750;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fp-sim-hero-subtitle {
+            margin-top: 4px;
+            overflow: hidden;
+            color: rgba(255,255,255,0.82);
+            font-size: 12px;
+            line-height: 1.45;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fp-sim-search {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 14px 0 10px;
+            padding: 10px 12px;
+            border: 1px solid rgba(15,23,42,0.06);
+            border-radius: 13px;
+            background: rgba(255,255,255,0.92);
+        }
+        .fp-sim-search svg {
+            width: 17px;
+            height: 17px;
+            flex-shrink: 0;
+            fill: none;
+            stroke: #a2a5af;
+            stroke-width: 2;
+        }
+        .fp-sim-search input {
+            width: 100%;
+            border: 0;
+            outline: 0;
+            color: #252730;
+            background: transparent;
+            font-size: 13px;
+        }
+        .fp-sim-tabs {
+            display: flex;
+            gap: 7px;
+            padding: 2px 0 10px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .fp-sim-tabs::-webkit-scrollbar { display: none; }
+        .fp-sim-tab {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            border: 0;
+            border-radius: 999px;
+            color: #737680;
+            background: rgba(255,255,255,0.9);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .fp-sim-tab.active {
+            color: #fff;
+            background: var(--fp-sim-primary);
+            box-shadow: 0 5px 14px color-mix(in srgb, var(--fp-sim-primary) 25%, transparent);
+        }
+        .fp-sim-section { margin-top: 10px; }
+        .fp-sim-section-title {
+            margin: 0 3px 7px;
+            color: #686b75;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+        .fp-sim-section-body {
+            display: grid;
+            gap: 8px;
+        }
+        .fp-sim-section-body.stats,
+        .fp-sim-section-body.grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .fp-sim-item {
+            display: flex;
+            width: 100%;
+            min-width: 0;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            border: 1px solid rgba(15,23,42,0.055);
+            border-radius: 15px;
+            color: inherit;
+            text-align: left;
+            background: rgba(255,255,255,0.94);
+            box-shadow: 0 4px 14px rgba(15,23,42,0.035);
+            cursor: pointer;
+        }
+        .fp-sim-item:active { transform: scale(0.985); }
+        .fp-sim-section-body.stats .fp-sim-item,
+        .fp-sim-section-body.grid .fp-sim-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 7px;
+        }
+        .fp-sim-item-icon {
+            display: flex;
+            width: 34px;
+            height: 34px;
+            flex-shrink: 0;
+            align-items: center;
+            justify-content: center;
+            border-radius: 11px;
+            color: var(--fp-sim-primary);
+            background: color-mix(in srgb, var(--fp-sim-primary) 10%, white);
+            font-size: 17px;
+            font-weight: 700;
+        }
+        .fp-sim-item-copy { flex: 1; min-width: 0; }
+        .fp-sim-item-title {
+            overflow: hidden;
+            color: #292b33;
+            font-size: 13px;
+            font-weight: 680;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fp-sim-item-subtitle {
+            margin-top: 3px;
+            overflow: hidden;
+            color: #92959f;
+            font-size: 11px;
+            line-height: 1.35;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .fp-sim-item-value {
+            margin-left: auto;
+            color: var(--fp-sim-primary);
+            font-size: 14px;
+            font-weight: 750;
+            white-space: nowrap;
+        }
+        .fp-sim-section-body.stats .fp-sim-item-value,
+        .fp-sim-section-body.grid .fp-sim-item-value { margin-left: 0; font-size: 18px; }
+        .fp-sim-item-badge {
+            padding: 3px 7px;
+            border-radius: 999px;
+            color: var(--fp-sim-primary);
+            background: color-mix(in srgb, var(--fp-sim-primary) 9%, white);
+            font-size: 9px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .fp-sim-empty {
+            padding: 34px 20px;
+            border-radius: 16px;
+            color: #a0a3ad;
+            text-align: center;
+            background: rgba(255,255,255,0.72);
+            font-size: 13px;
+        }
+        .fp-sim-loading {
+            position: absolute;
+            inset: 88px 0 0;
+            z-index: 8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 28px;
+            background: rgba(245,246,250,0.94);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .fp-sim-loading-spinner {
+            width: 34px;
+            height: 34px;
+            border: 3px solid color-mix(in srgb, var(--fp-sim-primary) 16%, white);
+            border-top-color: var(--fp-sim-primary);
+            border-radius: 50%;
+            animation: findphoneDesktopSpin 0.8s linear infinite;
+        }
+        .fp-sim-loading-title { margin-top: 14px; color: #333640; font-size: 15px; font-weight: 700; }
+        .fp-sim-loading-subtitle { margin-top: 6px; color: #999ca6; font-size: 12px; }
+        .fp-sim-detail-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 12;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            background: rgba(15,23,42,0.34);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        .fp-sim-detail-sheet {
+            position: relative;
+            width: 100%;
+            max-height: 78%;
+            padding: 12px 20px 28px;
+            overflow-y: auto;
+            border-radius: 24px 24px 0 0;
+            background: #fff;
+            box-shadow: 0 -16px 45px rgba(15,23,42,0.15);
+        }
+        .fp-sim-detail-handle { width: 38px; height: 4px; margin: 0 auto 16px; border-radius: 3px; background: #e1e3e8; }
+        .fp-sim-detail-close {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            width: 30px;
+            height: 30px;
+            border: 0;
+            border-radius: 50%;
+            color: #777a83;
+            background: #f1f2f5;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .fp-sim-detail-badge { display: inline-block; padding: 4px 9px; border-radius: 999px; color: var(--fp-sim-primary); background: color-mix(in srgb, var(--fp-sim-primary) 10%, white); font-size: 10px; font-weight: 700; }
+        .fp-sim-detail-title { margin-top: 12px; padding-right: 34px; color: #24262e; font-size: 20px; font-weight: 750; }
+        .fp-sim-detail-subtitle { margin-top: 5px; color: #8e919b; font-size: 12px; }
+        .fp-sim-detail-text { margin-top: 16px; color: #555862; font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
+        .fp-sim-detail-action { width: 100%; margin-top: 20px; padding: 12px 16px; border: 0; border-radius: 13px; color: #fff; background: var(--fp-sim-primary); font-size: 14px; font-weight: 700; cursor: pointer; }
+        .fp-sim-detail-result { margin-top: 10px; padding: 11px 13px; border-radius: 12px; color: #4d596d; background: #f4f6fa; font-size: 12px; line-height: 1.55; }
         .findphone-app-label {
             margin-top: 6px;
             font-size: 11px;
             color: #555;
             font-weight: 500;
+            width: 74px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: center;
         }
         .findphone-bottom {
             position: absolute;
@@ -2160,8 +2857,315 @@ body {
             transition: background 0.2s;
             pointer-events: auto;
         }
-        .findphone-home-bar:active {
+.findphone-home-bar:active {
             background: rgba(0,0,0,0.5);
+        }
+
+        /* ===== 个性化图集：分类页 / 分类详情页 ===== */
+        .desktop-atlas-page {
+            background: #f7f7f9;
+        }
+        .desktop-atlas-page .custom-page-header {
+            position: relative;
+            top: auto;
+            left: auto;
+            flex-shrink: 0;
+            box-sizing: border-box;
+            border-bottom: 1px solid #f0f0f2;
+        }
+        .desktop-atlas-view {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            flex-direction: column;
+        }
+        #desktop-atlas-category-view {
+            display: flex;
+        }
+        .desktop-atlas-page-content {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 18px 18px 40px;
+            box-sizing: border-box;
+        }
+        .desktop-atlas-page-tip {
+            padding: 14px 16px;
+            margin-bottom: 16px;
+            border-radius: 14px;
+            color: #777;
+            background: #fff;
+            font-size: 12px;
+            line-height: 1.65;
+        }
+        .desktop-atlas-category-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .desktop-atlas-category-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px;
+            border: 1px solid #ededf0;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 5px 18px rgba(25,25,35,0.04);
+            cursor: pointer;
+            transition: transform 0.15s, background 0.15s;
+        }
+        .desktop-atlas-category-card:active {
+            transform: scale(0.98);
+            background: #fafafa;
+        }
+        .desktop-atlas-category-cover {
+            width: 72px;
+            height: 58px;
+            flex-shrink: 0;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 3px;
+            overflow: hidden;
+            padding: 3px;
+            border-radius: 12px;
+            background: #f1f1f4;
+        }
+        .desktop-atlas-category-thumb {
+            min-width: 0;
+            min-height: 0;
+            border-radius: 7px;
+            background-color: #e6e6eb;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+        }
+        .desktop-atlas-category-thumb:first-child:last-child {
+            grid-column: 1 / -1;
+        }
+        .desktop-atlas-category-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .desktop-atlas-category-name {
+            overflow: hidden;
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .desktop-atlas-category-counts {
+            margin-top: 6px;
+            color: #999;
+            font-size: 12px;
+        }
+        .desktop-atlas-category-arrow {
+            color: #bbb;
+            font-size: 23px;
+        }
+        .desktop-atlas-add-panel {
+            padding: 16px;
+            border: 1px solid #ededf0;
+            border-radius: 17px;
+            background: #fff;
+        }
+        .desktop-atlas-panel-title {
+            margin-bottom: 12px;
+            color: #444;
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .desktop-atlas-type-tabs {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5px;
+            padding: 4px;
+            margin-bottom: 12px;
+            border-radius: 12px;
+            background: #f2f2f5;
+        }
+        .desktop-atlas-type-tabs button {
+            padding: 9px 8px;
+            border: none;
+            border-radius: 9px;
+            color: #888;
+            background: transparent;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .desktop-atlas-type-tabs button.active {
+            color: #ff6b9d;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(30,30,40,0.08);
+            font-weight: 600;
+        }
+        .desktop-atlas-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .desktop-atlas-btn {
+            flex: 1;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .desktop-atlas-btn.primary {
+            color: #fff;
+            background: var(--ins-pink, #ff8fab);
+        }
+        .desktop-atlas-btn.secondary {
+            color: #555;
+            background: #f2f2f7;
+        }
+        .desktop-atlas-media-section {
+            margin-top: 22px;
+        }
+        .desktop-atlas-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: #444;
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .desktop-atlas-section-header > :last-child {
+            color: #aaa;
+            font-size: 12px;
+            font-weight: 400;
+        }
+        .desktop-atlas-media-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .desktop-atlas-empty {
+            grid-column: 1 / -1;
+            padding: 28px 12px;
+            text-align: center;
+            color: #bbb;
+            font-size: 13px;
+            border: 1px dashed #ddd;
+            border-radius: 14px;
+            background: #fafafa;
+        }
+        .desktop-atlas-card {
+            min-width: 0;
+            overflow: hidden;
+            border: 1px solid #eee;
+            border-radius: 14px;
+            background: #fff;
+        }
+        .desktop-atlas-preview {
+            width: 100%;
+            aspect-ratio: 4 / 5;
+            background-color: #f4f4f5;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+        }
+        .desktop-atlas-media-grid.icon .desktop-atlas-preview {
+            aspect-ratio: 1 / 1;
+            background-size: contain;
+        }
+        .desktop-atlas-meta {
+            padding: 9px;
+        }
+        .desktop-atlas-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            border-radius: 999px;
+            color: #ff6b9d;
+            background: #fff1f5;
+            font-size: 10px;
+        }
+        .desktop-atlas-keywords {
+            min-height: 32px;
+            margin-top: 6px;
+            color: #666;
+            font-size: 11px;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+        .desktop-atlas-card-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .desktop-atlas-card-actions button {
+            flex: 1;
+            padding: 6px 4px;
+            border: none;
+            border-radius: 8px;
+            color: #777;
+            background: #f5f5f7;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .desktop-atlas-card-actions button.danger {
+            color: #d65a69;
+            background: #fff0f2;
+        }
+        .desktop-atlas-delete-category {
+            width: 100%;
+            margin-top: 30px;
+            padding: 13px;
+            border: 1px solid #ffd8df;
+            border-radius: 13px;
+            color: #d65a69;
+            background: #fff;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        /* ===== 查手机桌面 AI 生成遮罩 ===== */
+        .findphone-generating-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(247,247,247,0.88);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .findphone-generating-card {
+            width: min(280px, 88%);
+            padding: 26px 20px;
+            border: 1px solid rgba(0,0,0,0.05);
+            border-radius: 18px;
+            background: rgba(255,255,255,0.96);
+            box-shadow: 0 16px 48px rgba(0,0,0,0.10);
+            text-align: center;
+        }
+        .findphone-generating-spinner {
+            width: 30px;
+            height: 30px;
+            margin: 0 auto 15px;
+            border: 3px solid #f2dbe2;
+            border-top-color: var(--ins-pink, #ff8fab);
+            border-radius: 50%;
+            animation: findphoneDesktopSpin 0.8s linear infinite;
+        }
+        .findphone-generating-title {
+            color: #333;
+            font-size: 15px;
+            font-weight: 600;
+        }
+        .findphone-generating-subtitle {
+            margin-top: 7px;
+            color: #999;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        @keyframes findphoneDesktopSpin {
+            to { transform: rotate(360deg); }
         }
         
         /* ===== 查手机 - 百度搜索历史页面（白色INS风） ===== */

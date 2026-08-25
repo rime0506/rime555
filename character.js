@@ -1263,6 +1263,7 @@ ${loreContext}
                 let currentApiKey = apiKeyValue;
                 let res = await fetch(requestUrl, {
                     method: 'POST',
+                    cache: 'no-store',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${currentApiKey}`
@@ -1288,6 +1289,7 @@ ${loreContext}
                         if (freshKeyValue) {
                             res = await fetch(requestUrl, {
                                 method: 'POST',
+                                cache: 'no-store',
                                 headers: {
                                     'Content-Type': 'application/json',
                                     'Authorization': `Bearer ${freshKeyValue}`

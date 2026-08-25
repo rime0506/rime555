@@ -1,4 +1,4 @@
-﻿// ================== 系统设置 JS ==================
+// ================== 系统设置 JS ==================
 // 本文件包含系统设置页面（#setting-page）的所有 JS 逻辑
 // 依赖：db, showToast 等全局变量（来自 script.js）
 // ===== Section A: 手动推送订阅 =====
@@ -473,6 +473,10 @@
             document.getElementById('setting-page').style.display = 'none';
         }
 
+        // 兼容 index.html 的内联 onclick（确保全局可访问）
+        window.showSettingPage = showSettingPage;
+        window.hideSettingPage = hideSettingPage;
+
         // ✅ 设置页 - 手动保存所有设置
         async function saveSettingPage() {
             try {
@@ -490,13 +494,17 @@
                 // 3. 保存副API设置
                 await autoSaveSecondaryApi();
 
-                // 4. 保存NovelAI设置
+                // 4. 保存 MinMax 设置
+                await autoSaveMinMax();
+
+                // 5. 保存图片生成设置（GPT / NovelAI）
+                await autoSaveGPTImage();
                 await autoSaveNovelAI();
 
-                // 5. 保存联机设置
+                // 6. 保存联机设置
                 saveOnlineSettings();
 
-                // 6. 同步localStorage备份
+                // 7. 同步localStorage备份
                 const url = document.getElementById('ai-url-input')?.value?.trim();
                 const key = document.getElementById('ai-key-input')?.value?.trim();
                 const model = document.getElementById('ai-model-select')?.value;
@@ -511,6 +519,17 @@
                 console.error('[saveSettingPage] 保存设置失败:', e);
                 showToast('❌ 保存失败: ' + e.message);
             }
+        }
+
+        // 兼容旧调用名：历史代码使用 autoSaveMinMax，当前实现为 autoSaveMinimaxVoice
+        async function autoSaveMinMax() {
+            if (typeof autoSaveMinimaxVoice === 'function') {
+                return autoSaveMinimaxVoice();
+            }
+            if (typeof window.autoSaveMinimaxVoice === 'function') {
+                return window.autoSaveMinimaxVoice();
+            }
+            console.warn('[saveSettingPage] 未找到 autoSaveMinimaxVoice，跳过 Minimax 保存');
         }
 
 // ===== Section C: API 设置 / 副API / NovelAI / 预设管理 =====
@@ -976,6 +995,179 @@
             }
         }
 
+        // ===== 图片生成提供方：GPT / NovelAI =====
+        let _gptImageConfigCache = { url: '', key: '', model: '', size: '1024x1536', quality: 'auto', promptPrefix: '' };
+
+        function updateImageProviderUI(gptEnabled) {
+            const gptBody = document.getElementById('gpt-image-config-body');
+            const novelBody = document.getElementById('novelai-config-body');
+            const hint = document.getElementById('image-provider-hint');
+            if (gptBody) gptBody.style.display = gptEnabled ? 'block' : 'none';
+            if (novelBody) novelBody.style.display = gptEnabled ? 'none' : 'block';
+            if (hint) hint.textContent = `角色发送图片卡片时自动调用 ${gptEnabled ? 'GPT' : 'NovelAI'} 生成图片`;
+        }
+
+        async function isGPTImageEnabled() {
+            try {
+                const item = await db.dexiData.get('gptImageEnabled');
+                return item ? !!item.value : false;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        async function toggleGPTImageEnabled(el) {
+            const enabled = !!el.checked;
+            await db.dexiData.put({ key: 'gptImageEnabled', value: enabled });
+            updateImageProviderUI(enabled);
+            if (enabled) await autoSaveGPTImage();
+            showToast(enabled ? '已启用 GPT 生图' : '已切回 NovelAI 生图');
+        }
+
+        function toggleGPTImageKeyVis() {
+            const input = document.getElementById('gpt-image-api-key');
+            const icon = input?.closest('.api-input-group')?.querySelector('.eye-icon');
+            if (!input || !icon) return;
+            input.type = input.type === 'password' ? 'text' : 'password';
+            icon.textContent = input.type === 'password' ? '显示' : '隐藏';
+        }
+
+        function buildGPTImageEndpoint(baseUrl, endpoint) {
+            let url = (baseUrl || '').trim().replace(/\/+$/, '');
+            if (!url) return '';
+
+            const knownEndpoint = /\/(?:v1\/)?(?:models|images\/generations)$/i;
+            if (knownEndpoint.test(url)) {
+                const isRequestedEndpoint = endpoint === '/models'
+                    ? /\/models$/i.test(url)
+                    : /\/images\/generations$/i.test(url);
+                if (isRequestedEndpoint) return url;
+                const root = url.replace(knownEndpoint, '');
+                const hadV1 = /\/v1\/(?:models|images\/generations)$/i.test(url);
+                return `${root}${hadV1 ? '/v1' : ''}${endpoint}`;
+            }
+            if (/\/v1$/i.test(url)) return url + endpoint;
+            return url + '/v1' + endpoint;
+        }
+
+        function populateGPTImageModels(models, selectedModel = '') {
+            const select = document.getElementById('gpt-image-model-select');
+            if (!select) return;
+            select.innerHTML = '<option value="" disabled>请选择生图模型</option>';
+            models.forEach(model => {
+                const id = typeof model === 'string' ? model : model?.id;
+                if (!id) return;
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = id;
+                select.appendChild(opt);
+            });
+            if (selectedModel && !models.some(m => (typeof m === 'string' ? m : m?.id) === selectedModel)) {
+                const opt = document.createElement('option');
+                opt.value = selectedModel;
+                opt.textContent = selectedModel;
+                select.appendChild(opt);
+            }
+            if (selectedModel) select.value = selectedModel;
+        }
+
+        async function loadGPTImageConfig() {
+            try {
+                const [enabledItem, urlItem, keyItem, modelItem, listItem, sizeItem, qualityItem, promptItem] = await Promise.all([
+                    db.dexiData.get('gptImageEnabled'),
+                    db.dexiData.get('gptImageBaseUrl'),
+                    db.dexiData.get('gptImageApiKey'),
+                    db.dexiData.get('gptImageModel'),
+                    db.dexiData.get('gptImageModelList'),
+                    db.dexiData.get('gptImageSize'),
+                    db.dexiData.get('gptImageQuality'),
+                    db.dexiData.get('gptImagePromptPrefix')
+                ]);
+                const enabled = !!enabledItem?.value;
+                const url = urlItem?.value || '';
+                const key = keyItem?.value || '';
+                const model = modelItem?.value || '';
+                const size = sizeItem?.value || '1024x1536';
+                const quality = qualityItem?.value || 'auto';
+                const promptPrefix = promptItem?.value || '';
+                let models = [];
+                try { models = listItem?.value ? JSON.parse(listItem.value) : []; } catch (_) {}
+
+                const enabledSwitch = document.getElementById('gpt-image-enabled-switch');
+                if (enabledSwitch) enabledSwitch.checked = enabled;
+                if (document.getElementById('gpt-image-base-url')) document.getElementById('gpt-image-base-url').value = url;
+                if (document.getElementById('gpt-image-api-key')) document.getElementById('gpt-image-api-key').value = key;
+                if (document.getElementById('gpt-image-size')) document.getElementById('gpt-image-size').value = size;
+                if (document.getElementById('gpt-image-quality')) document.getElementById('gpt-image-quality').value = quality;
+                if (document.getElementById('gpt-image-prompt-prefix')) document.getElementById('gpt-image-prompt-prefix').value = promptPrefix;
+                populateGPTImageModels(models, model);
+                updateImageProviderUI(enabled);
+                _gptImageConfigCache = { url, key, model, size, quality, promptPrefix };
+            } catch (e) {
+                console.error('[GPT-Image] 加载配置失败:', e);
+            }
+        }
+
+        async function autoSaveGPTImage() {
+            const url = document.getElementById('gpt-image-base-url')?.value?.trim() || '';
+            const key = document.getElementById('gpt-image-api-key')?.value?.trim() || '';
+            const model = document.getElementById('gpt-image-model-select')?.value || '';
+            const size = document.getElementById('gpt-image-size')?.value || '1024x1536';
+            const quality = document.getElementById('gpt-image-quality')?.value || 'auto';
+            const promptPrefix = document.getElementById('gpt-image-prompt-prefix')?.value?.trim() || '';
+
+            if (!url && !key && !_gptImageConfigCache.url && !_gptImageConfigCache.key) return;
+            await db.dexiData.put({ key: 'gptImageBaseUrl', value: url || _gptImageConfigCache.url });
+            if (key || !_gptImageConfigCache.key) {
+                await db.dexiData.put({ key: 'gptImageApiKey', value: key });
+            }
+            await db.dexiData.put({ key: 'gptImageModel', value: model });
+            await db.dexiData.put({ key: 'gptImageSize', value: size });
+            await db.dexiData.put({ key: 'gptImageQuality', value: quality });
+            await db.dexiData.put({ key: 'gptImagePromptPrefix', value: promptPrefix });
+            _gptImageConfigCache = { url: url || _gptImageConfigCache.url, key: key || _gptImageConfigCache.key, model, size, quality, promptPrefix };
+        }
+
+        async function fetchGPTImageModels() {
+            const url = document.getElementById('gpt-image-base-url')?.value?.trim() || '';
+            const key = document.getElementById('gpt-image-api-key')?.value?.trim() || '';
+            if (!url || !key) {
+                showToast('请先填写 GPT 生图反代地址和密钥');
+                return;
+            }
+            const spinner = document.getElementById('gpt-image-fetch-spinner');
+            const text = document.getElementById('gpt-image-fetch-text');
+            if (spinner) spinner.style.display = 'block';
+            if (text) text.textContent = '拉取中...';
+            try {
+                const response = await fetch(buildGPTImageEndpoint(url, '/models'), {
+                    headers: { 'Authorization': `Bearer ${key}` }
+                });
+                if (!response.ok) {
+                    const detail = (await response.text()).substring(0, 200);
+                    throw new Error(`HTTP ${response.status}${detail ? ': ' + detail : ''}`);
+                }
+                const payload = await response.json();
+                const rawModels = Array.isArray(payload) ? payload : (payload.data || payload.models || []);
+                const allIds = rawModels.map(m => typeof m === 'string' ? m : m?.id).filter(Boolean);
+                const likelyImageIds = allIds.filter(id => /(gpt.*image|image|dall[\s._-]*e|imagen|flux)/i.test(id));
+                const modelIds = [...new Set(likelyImageIds.length ? likelyImageIds : allIds)].sort();
+                if (!modelIds.length) throw new Error('接口没有返回可用模型');
+                const current = document.getElementById('gpt-image-model-select')?.value || '';
+                const selected = modelIds.includes(current) ? current : modelIds[0];
+                populateGPTImageModels(modelIds, selected);
+                await db.dexiData.put({ key: 'gptImageModelList', value: JSON.stringify(modelIds) });
+                await autoSaveGPTImage();
+                showToast(`已拉取 ${modelIds.length} 个${likelyImageIds.length ? '生图' : ''}模型`);
+            } catch (e) {
+                console.error('[GPT-Image] 拉取模型失败:', e);
+                showToast('GPT 生图模型拉取失败: ' + e.message);
+            } finally {
+                if (spinner) spinner.style.display = 'none';
+                if (text) text.textContent = '拉取模型';
+            }
+        }
+
         // NovelAI 设置相关函数
         function toggleNovelAISettings() {
             const body = document.getElementById('novelai-setting-body');
@@ -1018,6 +1210,362 @@
             if (display) display.textContent = val;
         }
 
+        // 切换 NovelAI Image2Image 开关
+        async function toggleNovelAIImg2Img(el) {
+            const enabled = !!el.checked;
+            const body = document.getElementById('novelai-img2img-body');
+            if (body) body.style.display = enabled ? 'block' : 'none';
+            await db.dexiData.put({ key: 'novelaiImg2ImgEnabled', value: enabled });
+            console.log('[NovelAI] Image2Image:', enabled ? '开启' : '关闭');
+        }
+
+        // 处理 Image2Image 参考图上传
+        async function handleNovelAIImg2ImgUpload(inputEl) {
+            try {
+                const file = inputEl?.files?.[0];
+                if (!file) return;
+                if (!file.type.startsWith('image/')) {
+                    showToast('请选择图片文件');
+                    return;
+                }
+
+                const dataUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+
+                await db.dexiData.put({ key: 'novelaiImg2ImgImage', value: dataUrl });
+
+                const preview = document.getElementById('novelai-img2img-preview');
+                const wrap = document.getElementById('novelai-img2img-preview-wrap');
+                if (preview) preview.src = dataUrl;
+                if (wrap) wrap.style.display = 'block';
+
+                // 上传后弹出“导入面板”（模拟官网导入页）
+                const metadataText = await extractNovelAIMetadataText(file);
+                showNovelAIImportPanel({ dataUrl, metadataText });
+
+                showToast('参考图已保存');
+            } catch (e) {
+                console.error('[NovelAI] 上传参考图失败:', e);
+                showToast('参考图保存失败: ' + e.message);
+            }
+        }
+
+        // 读取 PNG 文本元数据（简化版）
+        async function extractNovelAIMetadataText(file) {
+            try {
+                const isPng = file.type === 'image/png' || /\.png$/i.test(file.name || '');
+                if (!isPng) return '';
+
+                const buf = await file.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+                // PNG signature
+                const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+                for (let i = 0; i < sig.length; i++) {
+                    if (bytes[i] !== sig[i]) return '';
+                }
+
+                let offset = 8;
+                let textParts = [];
+                const decoder = new TextDecoder('latin1');
+
+                while (offset + 12 <= bytes.length) {
+                    const length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+                    const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+                    const dataStart = offset + 8;
+                    const dataEnd = dataStart + length;
+                    if (dataEnd > bytes.length) break;
+
+                    if (type === 'tEXt' || type === 'iTXt') {
+                        const chunkText = decoder.decode(bytes.slice(dataStart, dataEnd));
+                        textParts.push(chunkText);
+                    }
+
+                    offset = dataEnd + 4; // skip CRC
+                    if (type === 'IEND') break;
+                }
+
+                const combined = textParts.join('\n');
+                return combined || '';
+            } catch (e) {
+                console.warn('[NovelAI] 读取元数据失败:', e);
+                return '';
+            }
+        }
+
+        // 解析 NovelAI 元数据（统一入口）
+        function parseNovelAIMetadata(mdRaw) {
+            const md = (mdRaw || '').replace(/\0/g, '\n');
+            if (!md.trim()) return null;
+
+            const promptMatch = md.match(/["']?prompt["']?\s*[:=]\s*([\s\S]*?)(?:["']?negative prompt["']?\s*[:=]|["']?steps["']?\s*[:=]|$)/i);
+            const negativeMatch = md.match(/["']?negative prompt["']?\s*[:=]\s*([\s\S]*?)(?:["']?steps["']?\s*[:=]|["']?sampler["']?\s*[:=]|["']?(?:cfg scale|scale)["']?\s*[:=]|["']?seed["']?\s*[:=]|["']?size["']?\s*[:=]|["']?model["']?\s*[:=]|$)/i);
+            const stepsMatch = md.match(/["']?steps["']?\s*[:=]\s*(\d+)/i);
+            const samplerMatch = md.match(/["']?sampler["']?\s*[:=]\s*["']?([^,\n"'}]+)/i);
+            const scaleMatch = md.match(/["']?(?:cfg scale|scale)["']?\s*[:=]\s*([\d.]+)/i);
+            const sizeMatch = md.match(/["']?size["']?\s*[:=]\s*["']?(\d{3,4})\s*[xX]\s*(\d{3,4})["']?/i);
+            const modelMatch = md.match(/["']?model["']?\s*[:=]\s*["']?([^,\n"'}]+)/i);
+            const seedMatch = md.match(/["']?seed["']?\s*[:=]\s*(\d+)/i);
+
+            return {
+                prompt: promptMatch?.[1]?.trim() || '',
+                negative: negativeMatch?.[1]?.trim() || '',
+                steps: stepsMatch?.[1] || '',
+                sampler: samplerMatch?.[1]?.trim() || '',
+                scale: scaleMatch?.[1] || '',
+                size: (sizeMatch?.[1] && sizeMatch?.[2]) ? `${sizeMatch[1]}x${sizeMatch[2]}` : '',
+                model: modelMatch?.[1]?.trim() || '',
+                seed: seedMatch?.[1] || '',
+                raw: md
+            };
+        }
+
+        // 显示导入面板（上传参考图后）
+        async function showNovelAIImportPanel({ dataUrl, metadataText }) {
+            let panel = document.getElementById('novelai-import-panel');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.id = 'novelai-import-panel';
+                panel.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:10020; display:flex; align-items:center; justify-content:center; padding:16px;';
+                panel.innerHTML = `
+                    <div style="width:min(560px, 96vw); max-height:90vh; overflow:auto; background:#f8e8f0; border-radius:14px; padding:14px; position:relative;">
+                        <button id="novelai-import-close" style="position:absolute; right:10px; top:8px; border:none; background:transparent; font-size:22px; color:#c06090; cursor:pointer;">×</button>
+                        <div style="display:flex; justify-content:center; margin-top:12px;">
+                            <img id="novelai-import-preview" style="width:220px; height:220px; object-fit:cover; border-radius:8px; border:1px solid #ead6df; background:#fff;" />
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:12px;">
+                            <button id="novelai-mode-img2img" style="padding:8px 12px; border:none; border-radius:8px; background:#4f8f5e; color:#fff; cursor:pointer;">Image2Image</button>
+                            <button id="novelai-mode-vibe" style="padding:8px 12px; border:none; border-radius:8px; background:#6ea17a; color:#fff; cursor:pointer;">Vibe Transfer</button>
+                            <button id="novelai-mode-precise" style="padding:8px 12px; border:none; border-radius:8px; background:#6ea17a; color:#fff; cursor:pointer;">Precise Reference</button>
+                        </div>
+                        <div id="novelai-mode-hint" style="margin-top:8px; text-align:center; font-size:12px; color:#666;">当前模式：Image2Image</div>
+
+                        <div id="novelai-mode-params" style="margin-top:12px; padding:10px; border-radius:10px; background:#f4dce7;">
+                            <div id="novelai-params-img2img" style="display:block;">
+                                <div style="font-size:12px; color:#7a4a61; margin-bottom:6px;">Image2Image 强度</div>
+                                <input id="novelai-import-img2img-strength" type="range" min="0" max="1" step="0.05" value="0.6" style="width:100%;">
+                                <div style="font-size:12px; color:#7a4a61; margin-top:6px;">Noise</div>
+                                <input id="novelai-import-img2img-noise" type="range" min="0" max="1" step="0.05" value="0.2" style="width:100%;">
+                            </div>
+                            <div id="novelai-params-vibe" style="display:none;">
+                                <div style="font-size:12px; color:#7a4a61; margin-bottom:6px;">Vibe Strength</div>
+                                <input id="novelai-import-vibe-strength" type="range" min="0" max="1" step="0.05" value="0.45" style="width:100%;">
+                                <div style="font-size:11px; color:#8d5d74; margin-top:6px;">用于风格迁移（当前实现会映射为导图参数）</div>
+                            </div>
+                            <div id="novelai-params-precise" style="display:none;">
+                                <div style="font-size:12px; color:#7a4a61; margin-bottom:6px;">Reference Strength</div>
+                                <input id="novelai-import-precise-strength" type="range" min="0" max="1" step="0.05" value="0.8" style="width:100%;">
+                                <div style="font-size:11px; color:#8d5d74; margin-top:6px;">用于更贴近参考图（当前实现会映射为导图参数）</div>
+                            </div>
+                        </div>
+
+                        <div id="novelai-metadata-wrap" style="margin-top:14px; padding:10px; background:#f5dde8; border-radius:10px; font-size:13px; color:#8c4f69;"></div>
+                        <div style="margin-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:13px; color:#5a5a5a;">
+                            <label><input type="checkbox" id="nai-import-prompt" checked> Prompt</label>
+                            <label><input type="checkbox" id="nai-import-negative" checked> Undesired Content</label>
+                            <label><input type="checkbox" id="nai-import-settings"> Settings</label>
+                            <label><input type="checkbox" id="nai-import-seed"> Seed</label>
+                        </div>
+                        <button id="novelai-import-metadata-btn" style="margin-top:12px; width:100%; padding:11px; border:none; border-radius:10px; background:#ffffff; color:#bd5d86; font-weight:600; cursor:pointer;">Import Metadata</button>
+                    </div>
+                `;
+                document.body.appendChild(panel);
+
+                panel.querySelector('#novelai-import-close').onclick = () => panel.style.display = 'none';
+                panel.onclick = (e) => { if (e.target === panel) panel.style.display = 'none'; };
+            }
+
+            panel.style.display = 'flex';
+            const preview = panel.querySelector('#novelai-import-preview');
+            if (preview) preview.src = dataUrl;
+
+            const metadataWrap = panel.querySelector('#novelai-metadata-wrap');
+            const parsedMeta = parseNovelAIMetadata(metadataText);
+            const hasMetadata = !!parsedMeta;
+            metadataWrap.innerHTML = hasMetadata
+                ? `
+                    <div style="font-weight:600; margin-bottom:6px;">检测到元数据（可导入并全局沿用）</div>
+                    <div style="font-size:12px; line-height:1.6; color:#7a4a61;">
+                        <div>Model: ${parsedMeta.model || '-'}</div>
+                        <div>Size: ${parsedMeta.size || '-'}</div>
+                        <div>Steps: ${parsedMeta.steps || '-'} | Sampler: ${parsedMeta.sampler || '-'} | Scale: ${parsedMeta.scale || '-'}</div>
+                        <div>Seed: ${parsedMeta.seed || '-'}</div>
+                    </div>
+                    <details style="margin-top:8px;">
+                        <summary style="cursor:pointer; font-size:12px; color:#8d5d74;">查看原始元数据</summary>
+                        <pre style="white-space:pre-wrap; word-break:break-all; background:#fff; border-radius:8px; padding:8px; margin-top:6px; font-size:11px; max-height:180px; overflow:auto;">${parsedMeta.raw.replace(/</g, '&lt;')}</pre>
+                    </details>
+                `
+                : '未检测到可读取元数据（仍可正常使用参考图导图）';
+
+            const savedModeItem = await db.dexiData.get('novelaiReferenceMode');
+            let mode = savedModeItem?.value || 'image2image';
+
+            const img2imgStrengthItem = await db.dexiData.get('novelaiImg2ImgStrength');
+            const img2imgNoiseItem = await db.dexiData.get('novelaiImg2ImgNoise');
+            const vibeStrengthItem = await db.dexiData.get('novelaiVibeStrength');
+            const preciseStrengthItem = await db.dexiData.get('novelaiPreciseStrength');
+
+            const img2imgStrengthInput = panel.querySelector('#novelai-import-img2img-strength');
+            const img2imgNoiseInput = panel.querySelector('#novelai-import-img2img-noise');
+            const vibeStrengthInput = panel.querySelector('#novelai-import-vibe-strength');
+            const preciseStrengthInput = panel.querySelector('#novelai-import-precise-strength');
+
+            if (img2imgStrengthInput && img2imgStrengthItem?.value != null) img2imgStrengthInput.value = String(img2imgStrengthItem.value);
+            if (img2imgNoiseInput && img2imgNoiseItem?.value != null) img2imgNoiseInput.value = String(img2imgNoiseItem.value);
+            if (vibeStrengthInput && vibeStrengthItem?.value != null) vibeStrengthInput.value = String(vibeStrengthItem.value);
+            if (preciseStrengthInput && preciseStrengthItem?.value != null) preciseStrengthInput.value = String(preciseStrengthItem.value);
+
+            const refreshMode = () => {
+                panel.querySelector('#novelai-mode-img2img').style.background = mode === 'image2image' ? '#4f8f5e' : '#6ea17a';
+                panel.querySelector('#novelai-mode-vibe').style.background = mode === 'vibe' ? '#4f8f5e' : '#6ea17a';
+                panel.querySelector('#novelai-mode-precise').style.background = mode === 'precise' ? '#4f8f5e' : '#6ea17a';
+                panel.querySelector('#novelai-mode-hint').textContent = `当前模式：${mode === 'image2image' ? 'Image2Image' : mode === 'vibe' ? 'Vibe Transfer' : 'Precise Reference'}`;
+
+                panel.querySelector('#novelai-params-img2img').style.display = mode === 'image2image' ? 'block' : 'none';
+                panel.querySelector('#novelai-params-vibe').style.display = mode === 'vibe' ? 'block' : 'none';
+                panel.querySelector('#novelai-params-precise').style.display = mode === 'precise' ? 'block' : 'none';
+            };
+            refreshMode();
+
+            const persistModeAndParams = async () => {
+                await db.dexiData.put({ key: 'novelaiReferenceMode', value: mode });
+                await db.dexiData.put({ key: 'novelaiImg2ImgStrength', value: img2imgStrengthInput?.value || '0.6' });
+                await db.dexiData.put({ key: 'novelaiImg2ImgNoise', value: img2imgNoiseInput?.value || '0.2' });
+                await db.dexiData.put({ key: 'novelaiVibeStrength', value: vibeStrengthInput?.value || '0.45' });
+                await db.dexiData.put({ key: 'novelaiPreciseStrength', value: preciseStrengthInput?.value || '0.8' });
+            };
+
+            panel.querySelector('#novelai-mode-img2img').onclick = async () => {
+                mode = 'image2image';
+                refreshMode();
+                await persistModeAndParams();
+            };
+            panel.querySelector('#novelai-mode-vibe').onclick = async () => {
+                mode = 'vibe';
+                refreshMode();
+                await persistModeAndParams();
+            };
+            panel.querySelector('#novelai-mode-precise').onclick = async () => {
+                mode = 'precise';
+                refreshMode();
+                await persistModeAndParams();
+            };
+
+            [img2imgStrengthInput, img2imgNoiseInput, vibeStrengthInput, preciseStrengthInput].forEach(el => {
+                if (!el) return;
+                el.onchange = persistModeAndParams;
+            });
+
+            panel.querySelector('#novelai-import-metadata-btn').onclick = async () => {
+                const importPrompt = !!panel.querySelector('#nai-import-prompt')?.checked;
+                const importNegative = !!panel.querySelector('#nai-import-negative')?.checked;
+                const importSettings = !!panel.querySelector('#nai-import-settings')?.checked;
+                const importSeed = !!panel.querySelector('#nai-import-seed')?.checked;
+
+                const parsed = parseNovelAIMetadata(metadataText);
+                if (!parsed) {
+                    showToast('未找到可导入元数据');
+                    return;
+                }
+
+                if (importPrompt && parsed.prompt) {
+                    const sysPromptEl = document.getElementById('novelai-system-prompt');
+                    if (sysPromptEl) sysPromptEl.value = parsed.prompt;
+                    await db.dexiData.put({ key: 'novelaiImportedPrompt', value: parsed.prompt });
+                }
+                if (importNegative && parsed.negative) {
+                    const negEl = document.getElementById('novelai-negative-prompt');
+                    if (negEl) negEl.value = parsed.negative;
+                    await db.dexiData.put({ key: 'novelaiImportedNegative', value: parsed.negative });
+                }
+                await db.dexiData.put({ key: 'novelaiUseImportedMetadata', value: true });
+                if (importSettings) {
+                    if (parsed.steps) {
+                        const sEl = document.getElementById('novelai-steps');
+                        if (sEl) sEl.value = parsed.steps;
+                        updateNovelAIStepsDisplay(parsed.steps);
+                        await db.dexiData.put({ key: 'novelaiSteps', value: parsed.steps });
+                    }
+                    if (parsed.sampler) {
+                        const samplerRaw = parsed.sampler.toLowerCase();
+                        const smEl = document.getElementById('novelai-sampler');
+                        if (smEl) {
+                            if (samplerRaw.includes('euler') && samplerRaw.includes('ancestral')) smEl.value = 'k_euler_ancestral';
+                            else if (samplerRaw.includes('euler')) smEl.value = 'k_euler';
+                            else if (samplerRaw.includes('lms')) smEl.value = 'k_lms';
+                            else if (samplerRaw.includes('plms')) smEl.value = 'plms';
+                            else if (samplerRaw.includes('ddim')) smEl.value = 'ddim';
+                            await db.dexiData.put({ key: 'novelaiSampler', value: smEl.value });
+                        }
+                    }
+                    if (parsed.scale) {
+                        const cEl = document.getElementById('novelai-scale');
+                        if (cEl) cEl.value = parsed.scale;
+                        updateNovelAIScaleDisplay(parsed.scale);
+                        await db.dexiData.put({ key: 'novelaiScale', value: parsed.scale });
+                    }
+                    if (parsed.size) {
+                        const sizeEl = document.getElementById('novelai-size');
+                        if (sizeEl) {
+                            const hasOption = Array.from(sizeEl.options || []).some(opt => opt.value === parsed.size);
+                            if (!hasOption) {
+                                const opt = document.createElement('option');
+                                opt.value = parsed.size;
+                                opt.textContent = `${parsed.size}（导入）`;
+                                sizeEl.appendChild(opt);
+                            }
+                            sizeEl.value = parsed.size;
+                            await db.dexiData.put({ key: 'novelaiSize', value: parsed.size });
+                        }
+                    }
+                    if (parsed.model) {
+                        const importedModel = parsed.model.trim();
+                        const modelEl = document.getElementById('novelai-model');
+                        if (modelEl && importedModel) {
+                            const hasModel = Array.from(modelEl.options || []).some(opt => opt.value === importedModel);
+                            if (!hasModel) {
+                                const opt = document.createElement('option');
+                                opt.value = importedModel;
+                                opt.textContent = `${importedModel}（导入）`;
+                                modelEl.appendChild(opt);
+                            }
+                            modelEl.value = importedModel;
+                            await db.dexiData.put({ key: 'novelaiModel', value: importedModel });
+                        }
+                    }
+                }
+                if (importSeed && parsed.seed) {
+                    await db.dexiData.put({ key: 'novelaiImportedSeed', value: parsed.seed });
+                } else {
+                    await db.dexiData.put({ key: 'novelaiImportedSeed', value: '' });
+                }
+
+                // 保存“原始元数据 + 结构化元数据”，后续所有生成可沿用/追踪
+                await db.dexiData.put({ key: 'novelaiLastImportedMetadataRaw', value: parsed.raw });
+                await db.dexiData.put({ key: 'novelaiLastImportedMetadataParsed', value: JSON.stringify(parsed) });
+
+                await persistModeAndParams();
+                await autoSaveNovelAI();
+                showToast('Metadata 导入完成（已全局生效）');
+            };
+        }
+
+        // 清空 Image2Image 参考图
+        async function clearNovelAIImg2ImgImage() {
+            await db.dexiData.put({ key: 'novelaiImg2ImgImage', value: '' });
+            const fileInput = document.getElementById('novelai-img2img-file');
+            const preview = document.getElementById('novelai-img2img-preview');
+            const wrap = document.getElementById('novelai-img2img-preview-wrap');
+            if (fileInput) fileInput.value = '';
+            if (preview) preview.src = '';
+            if (wrap) wrap.style.display = 'none';
+            showToast('参考图已清空');
+        }
+
         // 切换 NovelAI 自动生图开关
         async function toggleNovelAIAutoGenerate(el) {
             const enabled = el.checked;
@@ -1028,6 +1576,7 @@
         // 加载 NovelAI 配置
         async function loadNovelAIConfig() {
             try {
+                await loadGPTImageConfig();
                 const apiKeyItem = await db.dexiData.get('novelaiApiKey');
                 const proxyUrlItem = await db.dexiData.get('novelaiProxyUrl');
                 const modelItem = await db.dexiData.get('novelaiModel');
@@ -1037,6 +1586,10 @@
                 const sizeItem = await db.dexiData.get('novelaiSize');
                 const systemPromptItem = await db.dexiData.get('novelaiSystemPrompt');
                 const negativePromptItem = await db.dexiData.get('novelaiNegativePrompt');
+                const img2imgEnabledItem = await db.dexiData.get('novelaiImg2ImgEnabled');
+                const img2imgStrengthItem = await db.dexiData.get('novelaiImg2ImgStrength');
+                const img2imgNoiseItem = await db.dexiData.get('novelaiImg2ImgNoise');
+                const img2imgImageItem = await db.dexiData.get('novelaiImg2ImgImage');
 
                 if (apiKeyItem) document.getElementById('novelai-api-key').value = apiKeyItem.value;
                 if (proxyUrlItem) document.getElementById('novelai-proxy-url').value = proxyUrlItem.value;
@@ -1053,6 +1606,26 @@
                 if (sizeItem) document.getElementById('novelai-size').value = sizeItem.value;
                 if (systemPromptItem) document.getElementById('novelai-system-prompt').value = systemPromptItem.value;
                 if (negativePromptItem) document.getElementById('novelai-negative-prompt').value = negativePromptItem.value;
+
+                // 加载 Image2Image 配置
+                const img2imgSwitch = document.getElementById('novelai-img2img-enabled');
+                const img2imgBody = document.getElementById('novelai-img2img-body');
+                const img2imgStrengthInput = document.getElementById('novelai-img2img-strength');
+                const img2imgNoiseInput = document.getElementById('novelai-img2img-noise');
+                const img2imgPreviewWrap = document.getElementById('novelai-img2img-preview-wrap');
+                const img2imgPreview = document.getElementById('novelai-img2img-preview');
+
+                const img2imgEnabled = img2imgEnabledItem ? !!img2imgEnabledItem.value : false;
+                if (img2imgSwitch) img2imgSwitch.checked = img2imgEnabled;
+                if (img2imgBody) img2imgBody.style.display = img2imgEnabled ? 'block' : 'none';
+                if (img2imgStrengthInput && img2imgStrengthItem?.value != null) img2imgStrengthInput.value = img2imgStrengthItem.value;
+                if (img2imgNoiseInput && img2imgNoiseItem?.value != null) img2imgNoiseInput.value = img2imgNoiseItem.value;
+                if (img2imgImageItem?.value && img2imgPreview && img2imgPreviewWrap) {
+                    img2imgPreview.src = img2imgImageItem.value;
+                    img2imgPreviewWrap.style.display = 'block';
+                } else if (img2imgPreviewWrap) {
+                    img2imgPreviewWrap.style.display = 'none';
+                }
                 
                 // 加载画师串
                 const artistTagsItem = await db.dexiData.get('novelaiArtistTags');
@@ -1073,13 +1646,20 @@
         async function autoSaveNovelAI() {
             const apiKey = document.getElementById('novelai-api-key').value.trim();
             const proxyUrl = document.getElementById('novelai-proxy-url').value.trim();
-            const model = document.getElementById('novelai-model').value;
+            const modelRaw = document.getElementById('novelai-model').value;
+            const model = (modelRaw || '').trim() || 'nai-diffusion-4-5-full';
             const steps = document.getElementById('novelai-steps').value;
             const scale = document.getElementById('novelai-scale').value;
             const sampler = document.getElementById('novelai-sampler').value;
             const size = document.getElementById('novelai-size').value;
             const systemPrompt = document.getElementById('novelai-system-prompt').value.trim();
             const negativePrompt = document.getElementById('novelai-negative-prompt').value.trim();
+            const img2imgEnabled = !!document.getElementById('novelai-img2img-enabled')?.checked;
+            const img2imgStrength = document.getElementById('novelai-img2img-strength')?.value || '0.6';
+            const img2imgNoise = document.getElementById('novelai-img2img-noise')?.value || '0.2';
+            const referenceMode = await db.dexiData.get('novelaiReferenceMode');
+            const vibeStrengthItem = await db.dexiData.get('novelaiVibeStrength');
+            const preciseStrengthItem = await db.dexiData.get('novelaiPreciseStrength');
 
             // 🔧 防御：如果API Key为空，可能是面板未展开导致DOM未加载数据，不要覆盖数据库
             if (!apiKey && !proxyUrl) {
@@ -1096,16 +1676,27 @@
             await db.dexiData.put({ key: 'novelaiSize', value: size });
             await db.dexiData.put({ key: 'novelaiSystemPrompt', value: systemPrompt });
             await db.dexiData.put({ key: 'novelaiNegativePrompt', value: negativePrompt });
+            await db.dexiData.put({ key: 'novelaiImg2ImgEnabled', value: img2imgEnabled });
+            await db.dexiData.put({ key: 'novelaiImg2ImgStrength', value: img2imgStrength });
+            await db.dexiData.put({ key: 'novelaiImg2ImgNoise', value: img2imgNoise });
+            await db.dexiData.put({ key: 'novelaiReferenceMode', value: referenceMode?.value || 'image2image' });
+            await db.dexiData.put({ key: 'novelaiVibeStrength', value: vibeStrengthItem?.value || '0.45' });
+            await db.dexiData.put({ key: 'novelaiPreciseStrength', value: preciseStrengthItem?.value || '0.8' });
             
             // 保存画师串
             const artistTags = document.getElementById('novelai-artist-tags').value.trim();
             await db.dexiData.put({ key: 'novelaiArtistTags', value: artistTags });
         }
 
-        // 测试 NovelAI 连接
+        // 测试 NovelAI 连接（自动跟随当前模型/端点，并显示测试出图）
         async function testNovelAIConnection() {
             const apiKey = document.getElementById('novelai-api-key').value.trim();
             const proxyUrl = document.getElementById('novelai-proxy-url').value.trim();
+            const model = (document.getElementById('novelai-model')?.value || 'nai-diffusion-4-5-full').trim();
+            const steps = parseInt(document.getElementById('novelai-steps')?.value || '1', 10);
+            const scale = parseFloat(document.getElementById('novelai-scale')?.value || '5');
+            const sampler = (document.getElementById('novelai-sampler')?.value || 'k_euler').trim();
+            const sizeStr = (document.getElementById('novelai-size')?.value || '832x1216').trim();
             const resultDiv = document.getElementById('novelai-test-result');
             const btnText = document.getElementById('test-novelai-btn-text');
 
@@ -1116,47 +1707,43 @@
             }
 
             btnText.textContent = '测试中...';
-            resultDiv.textContent = '⏳ 正在测试连接...';
+            resultDiv.textContent = '⏳ 正在测试连接并生成测试图...';
             resultDiv.style.color = '#999';
 
             try {
-                const testUrl = proxyUrl || 'https://image.novelai.net/ai/generate-image';
-                
-                // 构造测试请求（使用最小参数）
-                const testPayload = {
-                    input: 'test',
-                    model: 'nai-diffusion-3',
-                    action: 'generate',
-                    parameters: {
-                        width: 512,
-                        height: 512,
-                        scale: 7,
-                        sampler: 'k_euler_ancestral',
-                        steps: 1,
-                        n_samples: 1,
-                        seed: 0
-                    }
-                };
+                const isV4 = model.includes('nai-diffusion-4');
 
-                const response = await fetch(testUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(testPayload)
+                // 先保存当前面板配置，确保测试与正式生图走同一套逻辑
+                await autoSaveNovelAI();
+
+                // 直接复用正式生图函数，避免测试解析逻辑和实际逻辑不一致
+                const imageDataUrl = await generateNovelAIImage('simple portrait, looking at viewer, soft light', {
+                    skipSystemPrompt: false,
+                    debugThrow: true,
+                    forceText2Img: true
                 });
 
-                if (response.ok) {
-                    resultDiv.textContent = '✅ NovelAI 连接成功！';
+                if (imageDataUrl) {
                     resultDiv.style.color = '#34C759';
+                    resultDiv.innerHTML = `
+                        <div style="margin-bottom:8px;">✅ NovelAI 连接成功（${isV4 ? 'V4' : 'V3'}）</div>
+                        <div style="font-size:11px; color:#888; margin-bottom:6px;">测试图预览：</div>
+                        <img src="${imageDataUrl}" alt="novelai-test-preview" style="width:100%; max-width:240px; border-radius:10px; border:1px solid #e5e5e5; display:block;" />
+                    `;
                 } else {
-                    const errorText = await response.text();
-                    resultDiv.textContent = `❌ 连接失败 (${response.status}): ${errorText.substring(0, 100)}`;
-                    resultDiv.style.color = '#ff3b30';
+                    resultDiv.style.color = '#ff9500';
+                    resultDiv.textContent = '⚠️ 连接请求已发出，但未拿到可展示图片。请检查代理返回格式或查看控制台日志。';
                 }
             } catch (err) {
-                resultDiv.textContent = `❌ 连接错误: ${err.message}`;
+                resultDiv.innerHTML = `
+                    <div style="color:#ff3b30;">❌ 连接错误: ${err.message}</div>
+                    <div style="margin-top:6px; font-size:11px; color:#999; line-height:1.4; word-break:break-all;">
+                        调试信息：
+                        <div>model=${model}</div>
+                        <div>proxy=${proxyUrl || '(默认官方端点)'}</div>
+                        <div>steps=${steps}, scale=${scale}, sampler=${sampler}, size=${sizeStr}</div>
+                    </div>
+                `;
                 resultDiv.style.color = '#ff3b30';
             } finally {
                 btnText.textContent = '测试 NovelAI 连接';
@@ -1220,11 +1807,142 @@
             if (!b64) return null;
             if (b64.startsWith('http')) return b64; // 是 URL
             if (b64.startsWith('data:image')) return b64; // 已经是 DataURL
-            // 猜测图片格式
+            // 常见图片签名
             if (b64.startsWith('iVBOR')) return `data:image/png;base64,${b64}`;
             if (b64.startsWith('/9j/')) return `data:image/jpeg;base64,${b64}`;
-            // 默认当 png
-            return `data:image/png;base64,${b64}`;
+            if (b64.startsWith('R0lGOD')) return `data:image/gif;base64,${b64}`;
+            if (b64.startsWith('UklGR')) return `data:image/webp;base64,${b64}`;
+            // 未知格式（很多是 zip 的 base64），返回 null 交给上层走 zip 提取兜底
+            return null;
+        }
+
+        function extractGPTImageValue(payload) {
+            if (!payload) return null;
+            if (typeof payload === 'string') return payload;
+            const candidates = [
+                payload.data?.[0], payload.output?.[0], payload.images?.[0],
+                payload.result, payload.image, payload
+            ].filter(Boolean);
+            for (const item of candidates) {
+                if (typeof item === 'string') return item;
+                const value = item.b64_json || item.base64 || item.b64 || item.url || item.image_url ||
+                    (typeof item.image === 'string' ? item.image : null) ||
+                    (typeof item.data === 'string' ? item.data : null);
+                if (value) return value;
+            }
+            return null;
+        }
+
+        async function generateGPTImage(description, options = {}) {
+            const { debugThrow = false } = options;
+            try {
+                const [urlItem, keyItem, modelItem, sizeItem, qualityItem, prefixItem] = await Promise.all([
+                    db.dexiData.get('gptImageBaseUrl'),
+                    db.dexiData.get('gptImageApiKey'),
+                    db.dexiData.get('gptImageModel'),
+                    db.dexiData.get('gptImageSize'),
+                    db.dexiData.get('gptImageQuality'),
+                    db.dexiData.get('gptImagePromptPrefix')
+                ]);
+                const baseUrl = (urlItem?.value || '').trim();
+                const apiKey = (keyItem?.value || '').trim().replace(/[^\x20-\x7E]/g, '');
+                const model = (modelItem?.value || '').trim();
+                const size = sizeItem?.value || '1024x1536';
+                const quality = qualityItem?.value || 'auto';
+                const promptPrefix = (prefixItem?.value || '').trim();
+                if (!baseUrl || !apiKey || !model) {
+                    throw new Error('请先配置 GPT 生图地址、密钥并拉取选择模型');
+                }
+
+                const prompt = [promptPrefix, description].filter(Boolean).join('\n');
+                const apiUrl = buildGPTImageEndpoint(baseUrl, '/images/generations');
+                const requestBody = { model, prompt, n: 1, size, quality };
+                console.log(`[GPT-Image] 🎨 开始生成 | model=${model} | "${String(description).substring(0, 80)}"`);
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                if (!response.ok) {
+                    let detail = '';
+                    try {
+                        const errorPayload = await response.json();
+                        detail = errorPayload?.error?.message || errorPayload?.message || JSON.stringify(errorPayload);
+                    } catch (_) {
+                        try { detail = await response.text(); } catch (_) {}
+                    }
+                    throw new Error(`HTTP ${response.status}${detail ? ': ' + detail.substring(0, 240) : ''}`);
+                }
+
+                const contentType = response.headers.get('content-type') || '';
+                let imageDataUrl = null;
+                if (contentType.startsWith('image/')) {
+                    imageDataUrl = await blobToDataUrl(await response.blob());
+                } else {
+                    const payload = await response.json();
+                    const imageValue = extractGPTImageValue(payload);
+                    imageDataUrl = resolveBase64Image(imageValue);
+                    if (!imageDataUrl && typeof imageValue === 'string' && imageValue.length > 100) {
+                        imageDataUrl = `data:image/png;base64,${imageValue}`;
+                    }
+                }
+                if (!imageDataUrl) throw new Error('接口返回成功，但响应中没有找到图片数据');
+
+                if (/^https?:\/\//i.test(imageDataUrl)) {
+                    try {
+                        const imageResponse = await fetch(imageDataUrl, {
+                            headers: { 'Authorization': `Bearer ${apiKey}` }
+                        });
+                        if (imageResponse.ok) imageDataUrl = await blobToDataUrl(await imageResponse.blob());
+                    } catch (e) {
+                        console.warn('[GPT-Image] 图片直链转 DataURL 失败，将直接使用 URL:', e.message);
+                    }
+                }
+                console.log('[GPT-Image] ✅ 图片生成成功');
+                return imageDataUrl;
+            } catch (err) {
+                console.error('[GPT-Image] 生成异常:', err);
+                if (debugThrow) throw err;
+                return null;
+            }
+        }
+
+        async function generateConfiguredImage(description, options = {}) {
+            return await isGPTImageEnabled()
+                ? generateGPTImage(description, options)
+                : generateNovelAIImage(description, options);
+        }
+
+        async function testGPTImageConnection() {
+            const resultDiv = document.getElementById('gpt-image-test-result');
+            const btnText = document.getElementById('test-gpt-image-btn-text');
+            if (btnText) btnText.textContent = '测试中...';
+            if (resultDiv) {
+                resultDiv.textContent = '⏳ 正在调用所选模型生成测试图...';
+                resultDiv.style.color = '#999';
+            }
+            try {
+                await autoSaveGPTImage();
+                const imageDataUrl = await generateGPTImage('A warm, natural portrait, soft light, looking at the viewer', { debugThrow: true });
+                if (resultDiv) {
+                    resultDiv.style.color = '#34C759';
+                    resultDiv.innerHTML = `
+                        <div style="margin-bottom:8px;">✅ GPT 生图连接成功</div>
+                        <div style="font-size:11px; color:#888; margin-bottom:6px;">测试图预览：</div>
+                        <img src="${imageDataUrl}" alt="gpt-image-test-preview" style="width:100%; max-width:240px; border-radius:10px; border:1px solid #e5e5e5; display:block;" />
+                    `;
+                }
+            } catch (err) {
+                if (resultDiv) {
+                    resultDiv.textContent = '❌ GPT 生图连接失败：' + err.message;
+                    resultDiv.style.color = '#ff3b30';
+                }
+            } finally {
+                if (btnText) btnText.textContent = '测试 GPT 生图';
+            }
         }
         
         // 调用 NovelAI API 生成图片，返回 DataURL 或 null
@@ -1237,7 +1955,7 @@
          */
         async function generateNovelAIImage(description, options = {}) {
             try {
-                const { skipSystemPrompt = false } = options;
+                const { skipSystemPrompt = false, debugThrow = false, forceText2Img = false } = options;
                 
                 const apiKeyItem = await db.dexiData.get('novelaiApiKey');
                 const proxyUrlItem = await db.dexiData.get('novelaiProxyUrl');
@@ -1249,6 +1967,14 @@
                 const systemPromptItem = await db.dexiData.get('novelaiSystemPrompt');
                 const negativePromptItem = await db.dexiData.get('novelaiNegativePrompt');
                 const artistTagsItem = await db.dexiData.get('novelaiArtistTags');
+                const img2imgEnabledItem = await db.dexiData.get('novelaiImg2ImgEnabled');
+                const img2imgStrengthItem = await db.dexiData.get('novelaiImg2ImgStrength');
+                const img2imgNoiseItem = await db.dexiData.get('novelaiImg2ImgNoise');
+                const img2imgImageItem = await db.dexiData.get('novelaiImg2ImgImage');
+                const referenceModeItem = await db.dexiData.get('novelaiReferenceMode');
+                const vibeStrengthItem = await db.dexiData.get('novelaiVibeStrength');
+                const preciseStrengthItem = await db.dexiData.get('novelaiPreciseStrength');
+                const importedSeedItem = await db.dexiData.get('novelaiImportedSeed');
                 
                 const rawApiKey = apiKeyItem ? apiKeyItem.value : '';
                 if (!rawApiKey) {
@@ -1259,25 +1985,62 @@
                 const apiKey = rawApiKey.trim().replace(/[^\x20-\x7E]/g, '');
                 
                 const userProxyUrl = proxyUrlItem ? proxyUrlItem.value.trim() : '';
-                let model = modelItem ? modelItem.value : 'nai-diffusion-4-5-full';
+                let model = (modelItem?.value || '').trim() || 'nai-diffusion-4-5-full';
                 const steps = stepsItem ? parseInt(stepsItem.value) : 28;
                 const scale = scaleItem ? parseFloat(scaleItem.value) : 5;
                 const sampler = samplerItem ? samplerItem.value : 'k_euler';
                 const sizeStr = sizeItem ? sizeItem.value : '832x1216';
                 const systemPrompt = systemPromptItem ? systemPromptItem.value : '';
                 const negativePrompt = negativePromptItem ? negativePromptItem.value : 'lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry';
+                const importedPromptItem = await db.dexiData.get('novelaiImportedPrompt');
+                const importedNegativeItem = await db.dexiData.get('novelaiImportedNegative');
+                const useImportedMetadataItem = await db.dexiData.get('novelaiUseImportedMetadata');
                 const artistTags = artistTagsItem ? artistTagsItem.value.trim() : '';
+                const img2imgEnabled = img2imgEnabledItem ? !!img2imgEnabledItem.value : false;
+                const img2imgStrength = img2imgStrengthItem ? parseFloat(img2imgStrengthItem.value) : 0.6;
+                const img2imgNoise = img2imgNoiseItem ? parseFloat(img2imgNoiseItem.value) : 0.2;
+                const img2imgImage = img2imgImageItem ? (img2imgImageItem.value || '') : '';
+                const referenceMode = referenceModeItem?.value || 'image2image';
+                const vibeStrength = vibeStrengthItem ? parseFloat(vibeStrengthItem.value) : 0.45;
+                const preciseStrength = preciseStrengthItem ? parseFloat(preciseStrengthItem.value) : 0.8;
+                const importedSeed = importedSeedItem?.value ? parseInt(importedSeedItem.value, 10) : null;
                 
-                // inpainting 模型不能直接生成，回退到同版本的普通模型
-                if (model === 'nai-diffusion-3-inpainting') model = 'nai-diffusion-3';
+                let effectiveStrength = img2imgStrength;
+                let effectiveNoise = img2imgNoise;
+                if (referenceMode === 'vibe') {
+                    effectiveStrength = Math.max(0, Math.min(1, vibeStrength));
+                    effectiveNoise = Math.max(0, Math.min(1, Math.max(0.05, vibeStrength * 0.7)));
+                } else if (referenceMode === 'precise') {
+                    effectiveStrength = Math.max(0, Math.min(1, preciseStrength));
+                    effectiveNoise = Math.max(0, Math.min(1, Math.max(0.01, (1 - preciseStrength) * 0.25)));
+                }
+                
+                const isInpaintingModel = model === 'nai-diffusion-3-inpainting';
+                const baseUseImg2Img = forceText2Img ? false : !!(img2imgEnabled && img2imgImage);
+                const useImg2Img = isInpaintingModel ? true : baseUseImg2Img;
+
+                // 选择了 inpainting 模型但没提供参考图时，直接报错，避免偷偷切模型
+                if (isInpaintingModel && !img2imgImage) {
+                    const errMsg = '当前模型是 nai-diffusion-3-inpainting，必须先上传 Base Img / 参考图';
+                    console.warn('[NovelAI-AutoGen] ' + errMsg);
+                    if (debugThrow) throw new Error(errMsg);
+                    return null;
+                }
                 
                 const isV4 = model.includes('nai-diffusion-4');
                 const [width, height] = sizeStr.split('x').map(Number);
                 
+                // 导入元数据优先（按官网思路：导入后应显著影响后续出图风格）
+                const useImportedMetadata = !!(useImportedMetadataItem && useImportedMetadataItem.value);
+                const importedPrompt = importedPromptItem?.value?.trim() || '';
+                const importedNegative = importedNegativeItem?.value?.trim() || '';
+
                 // 拼接最终 prompt：视频通话等场景跳过系统 Prompt，避免 1girl 等性别/风格冲突
                 // 画师串始终添加（如果有配置的话）
                 const promptParts = [];
-                if (!skipSystemPrompt && systemPrompt) {
+                if (useImportedMetadata && importedPrompt) {
+                    promptParts.push(importedPrompt);
+                } else if (!skipSystemPrompt && systemPrompt) {
                     promptParts.push(systemPrompt);
                 }
                 if (artistTags) {
@@ -1285,6 +2048,7 @@
                 }
                 promptParts.push(description);
                 const fullPrompt = promptParts.filter(Boolean).join(', ');
+                const effectiveNegativePrompt = (useImportedMetadata && importedNegative) ? importedNegative : negativePrompt;
                 
                 console.log(`[NovelAI-AutoGen] 🎨 开始生成 | model=${model} (V4=${isV4}) | "${description}"`);
                 
@@ -1301,13 +2065,13 @@
                 
                 // 根据模型版本构建不同的请求体
                 let requestBody;
-                const commonSeed = Math.floor(Math.random() * 9999999999);
+                const commonSeed = Number.isFinite(importedSeed) ? importedSeed : Math.floor(Math.random() * 9999999999);
                 
                 if (isV4) {
                     requestBody = {
                         input: fullPrompt,
                         model: model,
-                        action: 'generate',
+                        action: useImg2Img ? 'img2img' : 'generate',
                         parameters: {
                             params_version: 3,
                             width, height, scale, sampler, steps,
@@ -1335,20 +2099,27 @@
                                 use_order: true
                             },
                             v4_negative_prompt: {
-                                caption: { base_caption: negativePrompt, char_captions: [] },
+                                caption: { base_caption: effectiveNegativePrompt, char_captions: [] },
                                 legacy_uc: false
                             },
-                            negative_prompt: negativePrompt,
+                            negative_prompt: effectiveNegativePrompt,
                             deliberate_euler_ancestral_bug: false,
                             prefer_brownian: true
                         }
                     };
+
+                    // Image2Image（V4）：注入参考图和强度参数
+                    if (useImg2Img) {
+                        requestBody.parameters.image = img2imgImage;
+                        requestBody.parameters.strength = Math.max(0, Math.min(1, effectiveStrength || 0.6));
+                        requestBody.parameters.noise = Math.max(0, Math.min(1, effectiveNoise || 0.2));
+                    }
                 } else {
                     // V3 请求格式
                     requestBody = {
                         input: fullPrompt,
                         model: model,
-                        action: 'generate',
+                        action: useImg2Img ? 'img2img' : 'generate',
                         parameters: {
                             width, height, scale, sampler, steps,
                             seed: commonSeed,
@@ -1366,6 +2137,13 @@
                             negative_prompt: negativePrompt
                         }
                     };
+
+                    // Image2Image（V3）：注入参考图和强度参数
+                    if (useImg2Img) {
+                        requestBody.parameters.image = img2imgImage;
+                        requestBody.parameters.strength = Math.max(0, Math.min(1, effectiveStrength || 0.6));
+                        requestBody.parameters.noise = Math.max(0, Math.min(1, effectiveNoise || 0.2));
+                    }
                 }
                 
                 console.log('[NovelAI-AutoGen] 请求:', { url: apiUrl, model, isV4, prompt: fullPrompt.substring(0, 80) + '...' });
@@ -1378,6 +2156,7 @@
                     },
                     body: JSON.stringify(requestBody)
                 });
+                const responseClone = response.clone();
                 
                 console.log(`[NovelAI-AutoGen] 响应状态: ${response.status}`);
                 
@@ -1393,6 +2172,7 @@
                         errDetail = errDetail.substring(0, 150);
                     }
                     console.error(`[NovelAI-AutoGen] API 错误 (${response.status}): ${errDetail}`);
+                    if (debugThrow) throw new Error(`HTTP ${response.status}: ${errDetail}`);
                     return null;
                 }
                 
@@ -1431,6 +2211,18 @@
                                 }
                                 break;
                             }
+                            // 一些代理会把 base64 放到 output[0].data
+                            if (obj.output && Array.isArray(obj.output) && obj.output[0]?.data) {
+                                const outB64 = obj.output[0].data;
+                                imageDataUrl = resolveBase64Image(outB64);
+                                if (!imageDataUrl) {
+                                    const raw = atob(outB64);
+                                    const bytes = new Uint8Array(raw.length);
+                                    for (let j = 0; j < raw.length; j++) bytes[j] = raw.charCodeAt(j);
+                                    imageDataUrl = await extractPngFromZipBlob(new Blob([bytes]));
+                                }
+                                break;
+                            }
                         } catch (e) {
                             // 非 JSON，当成原始 base64 尝试
                             if (payload.length > 100) {
@@ -1441,7 +2233,20 @@
                     }
                     
                     if (!imageDataUrl) {
+                        // SSE 最终兜底：按二进制再次提取，兼容非标准代理返回
+                        try {
+                            const fallbackBlob = await responseClone.blob();
+                            if (fallbackBlob.type && fallbackBlob.type.startsWith('image/')) {
+                                imageDataUrl = await blobToDataUrl(fallbackBlob);
+                            } else {
+                                imageDataUrl = await extractPngFromZipBlob(fallbackBlob);
+                            }
+                        } catch (_) {}
+                    }
+
+                    if (!imageDataUrl) {
                         console.error('[NovelAI-AutoGen] SSE 响应中未找到图片数据');
+                        if (debugThrow) throw new Error(`SSE未找到图片 | content-type=${contentType}`);
                         return null;
                     }
                     
@@ -1453,13 +2258,23 @@
                     } else if (jsonData.url) {
                         imageDataUrl = jsonData.url;
                     } else {
-                        const b64 = jsonData.image || jsonData.data;
+                        const b64 = jsonData.image || jsonData.data || jsonData.output?.[0]?.data;
                         if (b64) {
                             imageDataUrl = resolveBase64Image(b64);
+                            if (!imageDataUrl) {
+                                // 不是直接图片 base64，尝试按 zip base64 解码提图
+                                try {
+                                    const raw = atob(b64);
+                                    const bytes = new Uint8Array(raw.length);
+                                    for (let j = 0; j < raw.length; j++) bytes[j] = raw.charCodeAt(j);
+                                    imageDataUrl = await extractPngFromZipBlob(new Blob([bytes]));
+                                } catch (_) {}
+                            }
                         }
                     }
                     if (!imageDataUrl) {
                         console.error('[NovelAI-AutoGen] JSON 响应中未找到图片');
+                        if (debugThrow) throw new Error(`JSON未找到图片 | content-type=${contentType}`);
                         return null;
                     }
                     
@@ -1473,6 +2288,19 @@
                     }
                 }
                 
+                if (imageDataUrl && /^https?:\/\//i.test(imageDataUrl)) {
+                    // 参考你给的 pwa 逻辑：最终统一转成 blob/dataurl，避免 <img> 直链权限问题
+                    try {
+                        const imgRes = await fetch(imageDataUrl, {
+                            headers: { 'Authorization': `Bearer ${apiKey}` }
+                        });
+                        if (imgRes.ok) {
+                            const imgBlob = await imgRes.blob();
+                            imageDataUrl = await blobToDataUrl(imgBlob);
+                        }
+                    } catch (_) {}
+                }
+
                 if (imageDataUrl) {
                     console.log(`[NovelAI-AutoGen] ✅ 图片生成成功`);
                 }
@@ -1480,6 +2308,7 @@
                 
             } catch (err) {
                 console.error('[NovelAI-AutoGen] 生成异常:', err);
+                if (debugThrow) throw err;
                 return null;
             }
         }
@@ -1537,10 +2366,10 @@
          */
         async function generateVideoCallNovelAIImage(videoReplyText, charId) {
             try {
-                // 1. 检查 NovelAI API Key 是否配置
-                const apiKeyItem = await db.dexiData.get('novelaiApiKey');
-                if (!apiKeyItem || !apiKeyItem.value) {
-                    console.log('[VideoCall-NovelAI] 未配置 API Key，跳过生图');
+                // 1. 检查当前图片提供方是否配置完整
+                const providerStatus = await getImageProviderStatus();
+                if (!providerStatus.ready) {
+                    console.log(`[VideoCall-Image] ${providerStatus.message}，跳过生图`);
                     return null;
                 }
 
@@ -1589,8 +2418,8 @@
                     console.warn('[VideoCall-NovelAI] Tag翻译失败，使用原文:', translateErr.message);
                 }
 
-                // 4. 调用 NovelAI 生成图片（跳过系统 Prompt，避免默认的 1girl 等覆盖角色实际性别）
-                const imageDataUrl = await generateNovelAIImage(englishTags, { skipSystemPrompt: true });
+                // 4. 调用当前启用的图片提供方
+                const imageDataUrl = await generateConfiguredImage(englishTags, { skipSystemPrompt: true });
                 if (imageDataUrl) {
                     console.log('[VideoCall-NovelAI] ✅ 视频通话图片生成成功');
                 }
@@ -1636,10 +2465,10 @@
                     return null;
                 }
 
-                // 检查 NovelAI API Key 是否配置
-                const apiKeyItem = await db.dexiData.get('novelaiApiKey');
-                if (!apiKeyItem || !apiKeyItem.value) {
-                    console.log('[VideoCall-NovelAI] 未配置 API Key，跳过');
+                // 检查当前图片提供方是否配置完整
+                const providerStatus = await getImageProviderStatus();
+                if (!providerStatus.ready) {
+                    console.log(`[VideoCall-Image] ${providerStatus.message}，跳过`);
                     return null;
                 }
 
@@ -1650,7 +2479,7 @@
                 if (preGeneratedTags && preGeneratedTags.trim()) {
                     // ✅ 使用 AI 主回复中一并生成的 tags，不再单独调用翻译 API
                     console.log(`[VideoCall-NovelAI] 🚀 使用预生成 tags: "${preGeneratedTags.substring(0, 80)}..."`);
-                    imageDataUrl = await generateNovelAIImage(preGeneratedTags.trim(), { skipSystemPrompt: true });
+                    imageDataUrl = await generateConfiguredImage(preGeneratedTags.trim(), { skipSystemPrompt: true });
                 } else {
                     console.error('[VideoCall-NovelAI] ❌ 无预生成 tags，跳过生图');
                     return null;
@@ -1678,6 +2507,31 @@
                 return false;
             }
         }
+
+        async function getImageProviderStatus() {
+            if (await isGPTImageEnabled()) {
+                const [urlItem, keyItem, modelItem] = await Promise.all([
+                    db.dexiData.get('gptImageBaseUrl'),
+                    db.dexiData.get('gptImageApiKey'),
+                    db.dexiData.get('gptImageModel')
+                ]);
+                const ready = !!(urlItem?.value && keyItem?.value && modelItem?.value);
+                return {
+                    provider: 'gpt',
+                    label: 'GPT',
+                    ready,
+                    message: ready ? '' : 'GPT 生图地址、密钥或模型未配置完整'
+                };
+            }
+            const apiKeyItem = await db.dexiData.get('novelaiApiKey');
+            const ready = !!apiKeyItem?.value;
+            return {
+                provider: 'novelai',
+                label: 'NovelAI',
+                ready,
+                message: ready ? '' : 'NovelAI API Key 未配置'
+            };
+        }
         
         // 在 AI 回复完成后，检测所有 imgcard 消息并自动生成图片
         async function processImgCardsWithNovelAI(charId, accountId) {
@@ -1688,10 +2542,10 @@
                 return;
             }
             
-            // 检查 API Key 是否配置
-            const apiKeyItem = await db.dexiData.get('novelaiApiKey');
-            if (!apiKeyItem || !apiKeyItem.value) {
-                console.log('[NovelAI-AutoGen] 未配置 API Key，跳过');
+            // 检查当前图片提供方是否配置完整
+            const providerStatus = await getImageProviderStatus();
+            if (!providerStatus.ready) {
+                console.log(`[Image-AutoGen] ${providerStatus.message}，跳过`);
                 return;
             }
             
@@ -1762,7 +2616,7 @@
                                     <div class="img-card-placeholder" style="position:relative;">
                                         <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
                                             <div class="novelai-loading-spinner" style="width:24px; height:24px; border:3px solid #e0e0e0; border-top-color:var(--deep-pink, #ff4081); border-radius:50%; animation:spin 0.8s linear infinite;"></div>
-                                            <div class="img-card-hint" style="font-size:11px; color:#999;">NovelAI 生成中...</div>
+                                            <div class="img-card-hint" style="font-size:11px; color:#999;">${providerStatus.label} 生成中...</div>
                                         </div>
                                     </div>
                                 `;
@@ -1772,8 +2626,8 @@
                     }
                 }
                 
-                // 调用 NovelAI 生成图片（使用翻译后的英文 tag）
-                const imageDataUrl = await generateNovelAIImage(englishTags);
+                // 调用当前启用的图片提供方
+                const imageDataUrl = await generateConfiguredImage(englishTags);
                 
                 if (imageDataUrl) {
                     // 生成成功：更新历史记录中的消息
@@ -1826,10 +2680,10 @@
                 return;
             }
             
-            // 检查 API Key 是否配置
-            const apiKeyItem = await db.dexiData.get('novelaiApiKey');
-            if (!apiKeyItem || !apiKeyItem.value) {
-                console.log('[NovelAI-GroupGen] 未配置 API Key，跳过');
+            // 检查当前图片提供方是否配置完整
+            const providerStatus = await getImageProviderStatus();
+            if (!providerStatus.ready) {
+                console.log(`[Image-GroupGen] ${providerStatus.message}，跳过`);
                 return;
             }
             
@@ -1898,7 +2752,7 @@
                                     <div class="img-card-placeholder" style="position:relative;">
                                         <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
                                             <div class="novelai-loading-spinner" style="width:24px; height:24px; border:3px solid #e0e0e0; border-top-color:var(--deep-pink, #ff4081); border-radius:50%; animation:spin 0.8s linear infinite;"></div>
-                                            <div class="img-card-hint" style="font-size:11px; color:#999;">NovelAI 生成中...</div>
+                                            <div class="img-card-hint" style="font-size:11px; color:#999;">${providerStatus.label} 生成中...</div>
                                         </div>
                                     </div>
                                 `;
@@ -1909,8 +2763,8 @@
                     }
                 }
                 
-                // 调用 NovelAI 生成图片
-                const imageDataUrl = await generateNovelAIImage(englishTags);
+                // 调用当前启用的图片提供方
+                const imageDataUrl = await generateConfiguredImage(englishTags);
                 
                 if (imageDataUrl) {
                     // 生成成功：更新群聊历史记录中的消息

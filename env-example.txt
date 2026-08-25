@@ -1,0 +1,17 @@
+# 服务器端口
+PORT=3000
+
+# JWT密钥（⚠️ 重要：设置后不要修改，否则所有用户都需要重新登录）
+# 如果不设置，会使用默认值：your-secret-key-change-in-production
+# 生产环境建议改成随机字符串，但一旦设置就不要再改
+JWT_SECRET=your-secret-key-change-in-production
+
+# 数据库路径（不要修改）
+DB_PATH=/app/data/database.sqlite
+
+# 📝 使用方法：
+# 1. 复制此文件为 .env：cp env-example.txt .env
+# 2. （可选）修改 JWT_SECRET 为随机字符串
+# 3. ⚠️ 重要：设置后不要再修改 JWT_SECRET，否则会导致所有用户需要重新登录
+
+

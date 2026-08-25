@@ -10,6 +10,7 @@
     let mcPanel = null;
     let mcFab = null;
     let mcUnread = 0;
+    let mcAppMode = localStorage.getItem('mc_app_mode') === 'true';
 
     // 保存原始 console 方法
     const _origLog = console.log.bind(console);
@@ -176,6 +177,7 @@
         mcPanel = document.createElement('div');
         mcPanel.id = 'mc-console-panel';
         mcPanel.style.cssText = `position:fixed;bottom:0;left:0;right:0;height:55vh;background:#fff;z-index:99999;display:flex;flex-direction:column;box-shadow:0 -4px 20px rgba(0,0,0,0.15);border-top-left-radius:16px;border-top-right-radius:16px;transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;`;
+        applyAppModeStyles();
 
         // 头部拖拽条 + 工具栏
         mcPanel.innerHTML = `
@@ -184,7 +186,8 @@
             </div>
             <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 12px 8px;">
                 <div style="font-size:14px;font-weight:600;color:#333;">📱 控制台</div>
-                <div style="display:flex;gap:8px;align-items:center;">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+                    <button id="mc-btn-app-mode" onclick="window._mcToggleAppMode()" style="padding:4px 10px;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:6px;font-size:11px;cursor:pointer;color:#666;">📱 App适配: 关</button>
                     <button id="mc-btn-pause" onclick="window._mcTogglePause()" style="padding:4px 10px;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:6px;font-size:11px;cursor:pointer;color:#666;">⏸ 暂停</button>
                     <button onclick="window._mcClearLogs()" style="padding:4px 10px;background:#fff0f0;border:1px solid #fcc;border-radius:6px;font-size:11px;cursor:pointer;color:#d32f2f;">🗑 清空</button>
                     <button onclick="window._mcExportLogs()" style="padding:4px 10px;background:#f0f4ff;border:1px solid #d8e2f8;border-radius:6px;font-size:11px;cursor:pointer;color:#5b7ddb;">📤 导出</button>
@@ -209,6 +212,8 @@
         `;
 
         document.body.appendChild(mcPanel);
+        applyAppModeStyles();
+        updateAppModeButton();
         updateFilterBtns();
         updateCountBadges();
         renderAllLogs();
@@ -241,6 +246,25 @@
             const used = (performance.memory.usedJSHeapSize / 1048576).toFixed(1);
             const total = (performance.memory.totalJSHeapSize / 1048576).toFixed(1);
             memEl.textContent = `内存: ${used}/${total}MB`;
+        }
+    }
+
+    function applyAppModeStyles() {
+        if (!mcPanel) return;
+        mcPanel.style.height = mcAppMode ? 'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom))' : '55vh';
+        mcPanel.style.bottom = mcAppMode ? '0' : '0';
+        mcPanel.style.paddingBottom = mcAppMode ? 'env(safe-area-inset-bottom)' : '0';
+        mcPanel.style.borderTopLeftRadius = mcAppMode ? '0' : '16px';
+        mcPanel.style.borderTopRightRadius = mcAppMode ? '0' : '16px';
+    }
+
+    function updateAppModeButton() {
+        if (!mcPanel) return;
+        const btn = mcPanel.querySelector('#mc-btn-app-mode');
+        if (btn) {
+            btn.textContent = mcAppMode ? '📱 App适配: 开' : '📱 App适配: 关';
+            btn.style.background = mcAppMode ? '#e8f5e9' : '#f5f5f5';
+            btn.style.color = mcAppMode ? '#2e7d32' : '#666';
         }
     }
 
@@ -338,6 +362,12 @@
         a.href = url; a.download = `console_logs_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
         a.click();
         URL.revokeObjectURL(url);
+    };
+    window._mcToggleAppMode = function() {
+        mcAppMode = !mcAppMode;
+        localStorage.setItem('mc_app_mode', mcAppMode ? 'true' : 'false');
+        applyAppModeStyles();
+        updateAppModeButton();
     };
 
     // 启用/禁用控制台
@@ -786,6 +816,29 @@ db.version(81).stores({
     intimate_requests: '++id, accountId, fromCharId, toCharId, relationType, status, time',
     offline_chats: '&key, accountId, charId, updatedAt', // 离线聊天记录：从localStorage迁移
     finance_data: '&key, updatedAt' // 财务数据：phone_balance, loanHistory, scratchHistory等
+});
+
+// 版本82：新增派生记忆索引表。
+// 该表只保存可从 chat_summaries 重建的索引，不迁移、不覆盖、不删除任何旧聊天或旧总结。
+db.version(82).stores({
+    dexiData: 'key, value',
+    lorebooks: '++id, name',
+    characters: '++id, name, type',
+    sticker_categories: '++id, name',
+    moments: '++id, userId, time, ownerUserId',
+    friend_requests: '++id, fromCharId, toAccountId, status, time',
+    group_chats: '++id, name, ownerAccountId, created_at',
+    phone_recents: '++id, accountId, charId, time, type',
+    sms_messages: '++id, accountId, charId, time, read',
+    chat_summaries: '++id, [accountId+chatType+chatId], accountId, chatType, chatId, time',
+    avatar_library: '++id, category, tag, time',
+    avatar_categories: '++id, name, parentCategory, order, time',
+    chat_themes: '++id, name, accountId, time',
+    intimate_relations: '++id, accountId, myCharId, partnerCharId, relationType, status, createdAt',
+    intimate_requests: '++id, accountId, fromCharId, toCharId, relationType, status, time',
+    offline_chats: '&key, accountId, charId, updatedAt',
+    finance_data: '&key, updatedAt',
+    memory_items: '++id, &sourceKey, memoryScopeId, [memoryScopeId+status], chatType, chatId, kind, status, sourceSummaryId, importance, eventEndTime, updatedAt'
 });
 
 // ===== 角色内存缓存（性能优化：消除频繁 IndexedDB 读取）=====
@@ -1321,6 +1374,7 @@ async function safeCharacterPut(char, label) {
                     'bubble_beautify_library',
                     'lorebookIds', 'lorebookId',
                     'chat_background', 'chatThemeId',
+                    'fp_chat_background_by_user', 'fp_desktop_wallpaper_by_user', 'fp_phone_personalization_meta_by_user',
                     'remark_by_user',
                     'mounted_sticker_categories', 'linked_user_id'
                 ];
@@ -1371,15 +1425,93 @@ async function checkStorageQuota() {
 
 // 🔧 定时自动保存守卫：防止浏览器崩溃/意外关闭导致内存数据丢失
 // 每60秒检查一次，如果有未保存的脏数据则自动持久化
-let _pendingDirtySaves = new Map(); // charId -> { char, accountId, history, timestamp }
+let _pendingDirtySaves = new Map(); // charId::bucketId -> { charId, accountId, bucketId, history, timestamp }
 
-function markChatDirty(charId, char, accountId, history) {
-    _pendingDirtySaves.set(charId, {
+function createChatMessageId() {
+    if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+    return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// 旧消息没有 messageId，因此用稳定字段作为兼容身份；不批量改写旧消息。
+function getChatMessageIdentity(message) {
+    if (!message || typeof message !== 'object') return `invalid:${String(message)}`;
+    if (message.messageId) return `id:${message.messageId}`;
+    const role = message.role || '';
+    const type = message.type || '';
+    const content = typeof message.content === 'string'
+        ? message.content
+        : JSON.stringify(message.content ?? message.message ?? '');
+    return `legacy:${message.time || message.timestamp || 0}:${role}:${type}:${content}`;
+}
+
+function getChatMessageCursorFingerprint(message) {
+    if (!message || typeof message !== 'object') return '';
+    if (message.messageId) return `id:${message.messageId}`;
+    const content = typeof message.content === 'string'
+        ? message.content
+        : JSON.stringify(message.content ?? message.message ?? '');
+    return `${message.time || message.timestamp || 0}|${message.role || ''}|${message.type || ''}|${content}`;
+}
+
+// 将调用方基于旧快照产生的消息合并进数据库最新版本，避免等长并发分支互相覆盖。
+// 删除/清空操作由调用方通过 isDelete 明确走精确替换，不经过这里。
+function mergeChatHistoriesSafely(dbHistory, incomingHistory) {
+    const base = Array.isArray(dbHistory) ? [...dbHistory] : [];
+    const incoming = Array.isArray(incomingHistory) ? incomingHistory : [];
+    if (base.length === 0) {
+        return incoming.map(message => {
+            if (message && typeof message === 'object' && !message.messageId) {
+                message.messageId = createChatMessageId();
+            }
+            return message;
+        });
+    }
+
+    const indexByIdentity = new Map();
+    base.forEach((message, index) => indexByIdentity.set(getChatMessageIdentity(message), index));
+
+    for (const message of incoming) {
+        const identity = getChatMessageIdentity(message);
+        if (indexByIdentity.has(identity)) {
+            // 同一条消息的状态/内容更新以调用方版本为准。
+            base[indexByIdentity.get(identity)] = message;
+            continue;
+        }
+        if (message && typeof message === 'object' && !message.messageId) {
+            message.messageId = createChatMessageId();
+        }
+        const nextIdentity = getChatMessageIdentity(message);
+        indexByIdentity.set(nextIdentity, base.length);
+        base.push(message);
+    }
+    return base;
+}
+
+function areChatHistoriesEquivalent(left, right) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index++) {
+        if (getChatMessageCursorFingerprint(left[index]) !== getChatMessageCursorFingerprint(right[index])) return false;
+    }
+    return true;
+}
+
+function getDirtySaveKey(charId, bucketId, accountId) {
+    return `${charId}::${bucketId || accountId || '__legacy__'}`;
+}
+
+function markChatDirty(charId, char, accountId, history, bucketId = null) {
+    const dirtyKey = getDirtySaveKey(charId, bucketId, accountId);
+    _pendingDirtySaves.set(dirtyKey, {
+        charId,
         char: char,
         accountId: accountId,
+        bucketId: bucketId,
         history: [...history], // 拷贝快照
         timestamp: Date.now()
     });
+    return dirtyKey;
 }
 
 async function flushDirtySaves() {
@@ -1388,31 +1520,35 @@ async function flushDirtySaves() {
     const entries = [..._pendingDirtySaves.entries()];
     _pendingDirtySaves.clear();
     
-    for (const [charId, data] of entries) {
+    for (const [dirtyKey, data] of entries) {
         try {
+            const charId = data.charId;
             const freshChar = await db.characters.get(charId);
             if (!freshChar) continue;
             
             // 只有当内存中的历史确实比DB中的新（更多消息）时才保存
-            const dbHistory = data.accountId 
-                ? (freshChar.chat_history_by_user?.[data.accountId] || [])
+            const targetBucketId = data.bucketId || data.accountId;
+            const dbHistory = targetBucketId
+                ? (freshChar.chat_history_by_user?.[targetBucketId] || [])
                 : (freshChar.chat_history || []);
             
-            if (data.history.length > dbHistory.length) {
+            if (!areChatHistoriesEquivalent(data.history, dbHistory)) {
                 // 🛡️ 使用 update() 只更新聊天记录字段，防止覆盖设置
                 const updatePayload = {};
-                if (data.accountId) {
+                if (targetBucketId) {
                     const mergedHistory = { ...(freshChar.chat_history_by_user || {}) };
-                    mergedHistory[data.accountId] = data.history;
+                    mergedHistory[targetBucketId] = mergeChatHistoriesSafely(dbHistory, data.history);
                     updatePayload.chat_history_by_user = mergedHistory;
                 } else {
-                    updatePayload.chat_history = data.history;
+                    updatePayload.chat_history = mergeChatHistoriesSafely(dbHistory, data.history);
                 }
                 await db.characters.update(charId, updatePayload);
                 console.log(`[AutoSave] ✅ 已自动保存 ${freshChar.name || charId} 的聊天记录（仅更新历史字段）`);
             }
         } catch (e) {
-            console.error(`[AutoSave] ❌ 自动保存失败 charId=${charId}:`, e);
+            // 重新放回队列，下次继续尝试；不会覆盖其他账号/记忆桶的脏数据。
+            _pendingDirtySaves.set(dirtyKey, data);
+            console.error(`[AutoSave] ❌ 自动保存失败 charId=${data.charId}:`, e);
         }
     }
 }
@@ -1427,9 +1563,11 @@ function emergencySyncFlush() {
     // 同步写入 localStorage 作为紧急兜底（IndexedDB 是异步的，不能保证 beforeunload 中完成）
     try {
         const emergencyData = {};
-        for (const [charId, data] of _pendingDirtySaves.entries()) {
-            emergencyData[charId] = {
+        for (const [dirtyKey, data] of _pendingDirtySaves.entries()) {
+            emergencyData[dirtyKey] = {
+                charId: data.charId,
                 accountId: data.accountId,
+                bucketId: data.bucketId,
                 history: data.history,
                 timestamp: data.timestamp
             };
@@ -1453,32 +1591,35 @@ async function recoverEmergencyDirtySaves() {
         const emergencyData = JSON.parse(raw);
         let recoveredCount = 0;
         
-        for (const [charId, data] of Object.entries(emergencyData)) {
+        for (const [dirtyKey, data] of Object.entries(emergencyData)) {
             try {
+                // 兼容旧版以 charId 作为对象键的紧急备份。
+                const charId = data.charId != null ? data.charId : dirtyKey.split('::')[0];
                 const numCharId = parseInt(charId);
                 const freshChar = await db.characters.get(numCharId || charId);
                 if (!freshChar) continue;
                 
-                const dbHistory = data.accountId 
-                    ? (freshChar.chat_history_by_user?.[data.accountId] || [])
+                const targetBucketId = data.bucketId || data.accountId;
+                const dbHistory = targetBucketId
+                    ? (freshChar.chat_history_by_user?.[targetBucketId] || [])
                     : (freshChar.chat_history || []);
                 
-                // 只有紧急数据比 DB 中的更新（更多消息）时才恢复
-                if (data.history && data.history.length > dbHistory.length) {
+                // 长度相同但内容来自不同并发分支时也要合并恢复。
+                if (data.history && !areChatHistoriesEquivalent(data.history, dbHistory)) {
                     const updatePayload = {};
-                    if (data.accountId) {
+                    if (targetBucketId) {
                         const merged = { ...(freshChar.chat_history_by_user || {}) };
-                        merged[data.accountId] = data.history;
+                        merged[targetBucketId] = mergeChatHistoriesSafely(dbHistory, data.history);
                         updatePayload.chat_history_by_user = merged;
                     } else {
-                        updatePayload.chat_history = data.history;
+                        updatePayload.chat_history = mergeChatHistoriesSafely(dbHistory, data.history);
                     }
                     await db.characters.update(numCharId || charId, updatePayload);
                     recoveredCount++;
                     console.log(`[EmergencyRecover] ✅ 已恢复 ${freshChar.name || charId} 的聊天记录（${data.history.length}条消息）`);
                 }
             } catch (e) {
-                console.error(`[EmergencyRecover] ❌ 恢复 charId=${charId} 失败:`, e);
+                console.error(`[EmergencyRecover] ❌ 恢复 dirtyKey=${dirtyKey} 失败:`, e);
             }
         }
         
@@ -1635,6 +1776,178 @@ async function saveFinanceData(key, value) {
 
 // ===== manualSubscribePush 已移至 settings.js =====
 
+        // ===== Minimax 语音设置逻辑 =====
+        const MINIMAX_VOICE_PROXY_BASE_URL = '/api/minimax';
+        let _minimaxVoiceConfigCache = { key: '', model: '', voiceId: '' };
+
+        function toggleMinimaxVoiceSetting() {
+            const body = document.getElementById('minimax-voice-setting-body');
+            const arrow = document.getElementById('minimax-voice-setting-arrow');
+            if (!body || !arrow) return;
+            if (body.style.display === 'block') {
+                body.style.display = 'none';
+                arrow.classList.remove('expanded');
+            } else {
+                body.style.display = 'block';
+                arrow.classList.add('expanded');
+                loadMinimaxVoiceConfig();
+            }
+        }
+
+        function toggleMinimaxVoiceKeyVis() {
+            const input = document.getElementById('minimax-voice-key-input');
+            const inputGroup = input?.closest('.api-input-group');
+            const icon = inputGroup ? inputGroup.querySelector('.eye-icon') : null;
+            if (!input || !icon) return;
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.textContent = '隐藏';
+            } else {
+                input.type = 'password';
+                icon.textContent = '显示';
+            }
+        }
+
+        async function loadMinimaxVoiceConfig() {
+            try {
+                const keyItem = await db.dexiData.get('minimaxVoiceApiKey');
+                const modelItem = await db.dexiData.get('minimaxVoiceModel');
+                const voiceIdItem = await db.dexiData.get('minimaxVoiceId');
+                const voiceListItem = await db.dexiData.get('minimaxVoiceList');
+
+                if (keyItem?.value && document.getElementById('minimax-voice-key-input')) document.getElementById('minimax-voice-key-input').value = keyItem.value;
+                if (voiceListItem?.value && document.getElementById('minimax-voice-model-select')) {
+                    const voices = JSON.parse(voiceListItem.value);
+                    const select = document.getElementById('minimax-voice-model-select');
+                    select.innerHTML = '<option value="" disabled>请选择语音模型</option>';
+                    voices.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.text = m.id;
+                        select.appendChild(opt);
+                    });
+                }
+                if (modelItem?.value && document.getElementById('minimax-voice-model-select')) document.getElementById('minimax-voice-model-select').value = modelItem.value;
+                if (voiceIdItem?.value && document.getElementById('minimax-voice-voiceid-input')) document.getElementById('minimax-voice-voiceid-input').value = voiceIdItem.value;
+                _minimaxVoiceConfigCache = {
+                    key: keyItem?.value || '',
+                    model: modelItem?.value || '',
+                    voiceId: voiceIdItem?.value || ''
+                };
+            } catch (e) {
+                console.warn('[MinimaxVoice] 加载配置失败:', e);
+            }
+        }
+
+        async function autoSaveMinimaxVoice() {
+            const key = document.getElementById('minimax-voice-key-input')?.value?.trim() || '';
+            const model = document.getElementById('minimax-voice-model-select')?.value || '';
+            const voiceId = document.getElementById('minimax-voice-voiceid-input')?.value?.trim() || '';
+            if (!key && !model && !voiceId) return;
+            await db.dexiData.put({ key: 'minimaxVoiceApiKey', value: key });
+            await db.dexiData.put({ key: 'minimaxVoiceModel', value: model });
+            await db.dexiData.put({ key: 'minimaxVoiceId', value: voiceId });
+            _minimaxVoiceConfigCache = { key, model, voiceId };
+        }
+
+        async function clearMinimaxVoiceConfig() {
+            await db.dexiData.put({ key: 'minimaxVoiceApiKey', value: '' });
+            await db.dexiData.put({ key: 'minimaxVoiceModel', value: '' });
+            await db.dexiData.put({ key: 'minimaxVoiceId', value: '' });
+            await db.dexiData.put({ key: 'minimaxVoiceList', value: '' });
+            _minimaxVoiceConfigCache = { key: '', model: '', voiceId: '' };
+            const keyEl = document.getElementById('minimax-voice-key-input');
+            const modelEl = document.getElementById('minimax-voice-model-select');
+            const voiceIdEl = document.getElementById('minimax-voice-voiceid-input');
+            if (keyEl) keyEl.value = '';
+            if (voiceIdEl) voiceIdEl.value = '';
+            if (modelEl) modelEl.innerHTML = '<option value="" disabled selected>请先拉取语音模型</option>';
+            showToast('Minimax 语音配置已清空');
+        }
+
+        function getMinimaxVoiceApiUrl(endpoint) {
+            return MINIMAX_VOICE_PROXY_BASE_URL + endpoint;
+        }
+
+        async function fetchMinimaxVoiceModels() {
+            const key = document.getElementById('minimax-voice-key-input')?.value?.trim() || '';
+            if (!key) {
+                showToast('请先填写 Minimax 语音密钥');
+                return;
+            }
+            const spinner = document.getElementById('minimax-voice-fetch-spinner');
+            const text = document.getElementById('minimax-voice-fetch-text');
+            if (spinner) spinner.style.display = 'block';
+            if (text) text.textContent = '拉取中...';
+            try {
+                const reqUrl = getMinimaxVoiceApiUrl('/models');
+                const res = await fetch(reqUrl, { headers: { 'Authorization': `Bearer ${key}` } });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const models = normalizeMinimaxVoiceModels(data);
+                await db.dexiData.put({ key: 'minimaxVoiceList', value: JSON.stringify(models) });
+                const select = document.getElementById('minimax-voice-model-select');
+                if (select) {
+                    select.innerHTML = '<option value="" disabled>请选择语音模型</option>';
+                    models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.text = m.label || m.id;
+                        select.appendChild(opt);
+                    });
+                }
+                showToast(`已拉取 ${models.length} 个语音模型`);
+            } catch (e) {
+                showToast('拉取语音模型失败: ' + e.message);
+            } finally {
+                if (spinner) spinner.style.display = 'none';
+                if (text) text.textContent = '拉取语音模型';
+            }
+        }
+
+        function normalizeMinimaxVoiceModels(data) {
+            const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+            return list.map((m, idx) => {
+                if (typeof m === 'string') return { id: m, label: m };
+                const id = m.id || m.model || m.name || m.voice_id || `model_${idx + 1}`;
+                const label = m.label || m.display_name || m.name || id;
+                return { id, label };
+            }).filter(m => m.id);
+        }
+
+        async function testMinimaxVoiceConnection() {
+            const btnText = document.getElementById('test-minimax-voice-btn-text');
+            if (btnText) btnText.textContent = '测试中...';
+            try {
+                const key = document.getElementById('minimax-voice-key-input')?.value?.trim() || '';
+                const model = document.getElementById('minimax-voice-model-select')?.value || '';
+                const voiceId = document.getElementById('minimax-voice-voiceid-input')?.value?.trim() || '';
+                if (!key || !model) throw new Error('请先填写密钥并选择语音模型');
+                const reqUrl = getMinimaxVoiceApiUrl('/text_to_speech');
+                const payload = {
+                    model,
+                    text: '连接测试',
+                    voice_id: voiceId || undefined
+                };
+                const res = await fetch(reqUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${key}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                showToast('Minimax 语音连接成功');
+                if (btnText) btnText.textContent = '✅ 连接成功';
+            } catch (e) {
+                showToast('Minimax 语音连接失败: ' + e.message);
+                if (btnText) btnText.textContent = '❌ 连接失败';
+            } finally {
+                setTimeout(() => { if (btnText) btnText.textContent = '测试 Minimax 语音连接'; }, 3000);
+            }
+        }
+
         // ===== 图片压缩工具函数 =====
         function compressImage(dataUrl, maxWidth = 800, quality = 0.75) {
             return new Promise((resolve) => {
@@ -1699,9 +2012,7 @@ async function saveFinanceData(key, value) {
             _setLoadingProgress(15);
 
             // ========== 第一阶段：界面恢复 ==========
-            checkFirstVisitDisclaimer();
-            checkUpdateNotice();
-            checkSiteNotice();
+            // 开屏免责声明和站点通知不在启动时自动弹出；更新公告在加载完成后按版本显示。
             
             _setLoadingProgress(25);
             
@@ -1747,6 +2058,11 @@ async function saveFinanceData(key, value) {
             try {
                 // 数据迁移（只在首次运行时有实际工作量）
                 await migrateAccountData();
+                await captureMemoryCompatibilityManifest();
+                await migrateStableWorldMemoryBuckets();
+                await validateMemoryCompatibilityManifest();
+                // 只向新表建立可重建索引，并在写入前后核验旧聊天/群聊/总结指纹。
+                await initializeDerivedMemoryIndexV2();
                 _setLoadingProgress(70);
                 await migratePhoneAndSmsToIndexedDB();
                 await migrateOfflineAndFinanceToIndexedDB();
@@ -1801,6 +2117,14 @@ async function saveFinanceData(key, value) {
                     console.warn('[副API缓存] 预加载失败:', e.message);
                 }
                 
+                // 预加载 Minimax 语音配置到输入框/内存
+                try {
+                    await loadMinimaxVoiceConfig();
+                    console.log('[MinimaxVoice] ✅ 已预加载 Minimax 语音配置');
+                } catch (e) {
+                    console.warn('[MinimaxVoice] 预加载配置失败:', e.message);
+                }
+                
                 // 预加载 NovelAI 配置到 DOM 输入框（防止保存按钮覆盖空值）
                 try {
                     await loadNovelAIConfig();
@@ -1819,33 +2143,11 @@ async function saveFinanceData(key, value) {
                 _dismissLoadingScreen();
                 console.log('[Init] ✅ 加载完成，进入桌面');
             }, 300); // 给进度条动画留300ms
-            
-            // ========== 第三阶段：低优先级后台服务（桌面显示后异步执行） ==========
+
+            // 加载页淡出后显示本次更新公告；同一版本确认过后不再重复弹出
             setTimeout(() => {
-                // 请求通知权限
-                if ('Notification' in window && Notification.permission === 'default') {
-                    console.log('[通知] 请求通知权限...');
-                    Notification.requestPermission().then(permission => {
-                        console.log('[通知] 权限结果:', permission);
-                        if (permission === 'granted') {
-                            showDebugToast('✓ 通知权限已授予', true);
-                        }
-                    });
-                }
-                
-                // 通知轮询
-                if (notifEnabled) {
-                    startNotificationLoop(15);
-                }
-                
-                // Service Worker 注册
-                if (location.protocol === 'https:' || location.hostname === 'localhost') {
-                    console.log('[Init] 注册 Service Worker 和订阅推送...');
-                    registerServiceWorkerAndSubscribe().catch(e => {
-                        console.warn('[SW] 注册失败:', e.message);
-                    });
-                }
-            }, 800);
+                checkUpdateNotice();
+            }, 900);
             
             setTimeout(() => {
                 startAutoChatLoop(); // 主动聊天检测
@@ -1934,7 +2236,7 @@ async function saveFinanceData(key, value) {
         }
 
         // ===== 更新公告弹窗 =====
-        const UPDATE_VERSION = 'v2026-03-06'; // 每次更新改这个版本号，就会重新弹出
+        const UPDATE_VERSION = 'v2026-08-25'; // 每次更新改这个版本号，就会重新弹出
         
         function checkUpdateNotice() {
             const readKey = 'update_notice_read_' + UPDATE_VERSION;
@@ -1943,66 +2245,49 @@ async function saveFinanceData(key, value) {
         }
         
         function showUpdateNotice() {
-            const readKey = 'update_notice_read_' + UPDATE_VERSION;
+            if (document.getElementById('update-notice-modal')) return;
             const overlay = document.createElement('div');
             overlay.id = 'update-notice-modal';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:999999;animation:fadeIn 0.25s ease-out;';
-            
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.38);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;z-index:999999;animation:fadeIn 0.2s ease-out;';
+             
             overlay.innerHTML = `
-                <div style="background:#fff;border-radius:16px;width:310px;max-height:80vh;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,0.15);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;flex-direction:column;">
-                    <div style="padding:22px 20px 0;text-align:center;">
-                        <div style="font-size:17px;font-weight:700;color:#262626;letter-spacing:0.3px;">更新公告</div>
-                        <div style="font-size:11px;color:#c7c7c7;margin-top:3px;">Update Notes · ${UPDATE_VERSION}</div>
+                <div role="dialog" aria-modal="true" aria-labelledby="update-notice-title" style="background:#fff;border-radius:14px;width:min(360px,100%);max-height:82vh;overflow:hidden;border:1px solid #e8e8e8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;display:flex;flex-direction:column;">
+                    <div style="padding:24px 24px 0;text-align:center;">
+                        <div id="update-notice-title" style="font-size:19px;font-weight:700;color:#000;letter-spacing:0.5px;">更新公告</div>
                     </div>
-                    <div style="padding:16px 20px;font-size:13px;color:#444;line-height:1.9;letter-spacing:0.2px;overflow-y:auto;flex:1;">
-                        <div style="font-size:14px;font-weight:600;color:#333;margin-bottom:8px;">最近更新汇总</div>
-                        <div style="padding-left:4px;">
-                            <p style="margin:0 0 4px;">1. 视频通话生图</p>
-                            <p style="margin:0 0 4px;">2. 角色截边角料为头像</p>
-                            <p style="margin:0 0 4px;">3. 角色朋友圈屏蔽用户</p>
-                            <p style="margin:0 0 4px;">4. 群聊增加发送图片/语音</p>
-                            <p style="margin:0 0 4px;">5. 小剧场模式</p>
+                    <div style="padding:20px 24px 8px;font-size:13px;color:#000;line-height:1.8;letter-spacing:0.1px;overflow-y:auto;flex:1;">
+                        <div style="font-size:15px;font-weight:600;color:#000;margin-bottom:12px;">新增内容</div>
+                        <div>
+                            <p style="margin:0 0 10px;">1. 增加线下查岗功能</p>
+                            <p style="margin:0 0 10px;">2. 增加手机自定义功能，角色可以自己搭配桌面壁纸和图标，自动生成桌面APP（需要在个性化上传图集）。点击对应APP后，会二次生成该APP的内部内容页面，支持交互使用</p>
+                            <p style="margin:0 0 10px;">3. 增加角色自主行动功能，角色可以自主下载、卸载APP，自主打开和使用各类APP、继续游玩软件内内容</p>
                         </div>
-                        <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0;font-size:12px;color:#000;line-height:1.7;">
-                            有bug及时反馈 修完将无限期停更
+                        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e8e8e8;color:#000;">
+                            <p style="margin:0 0 8px;">有bug后续随缘修复</p>
+                            <p style="margin:0 0 8px;">链接可以分享给朋友</p>
+                            <p style="margin:0 0 8px;font-weight:600;">禁止任何盈利行为，禁止付费购买</p>
+                            <p style="margin:0;">不懂代码随便做做 带着视奸目的来的倒大霉₍ᐢ..ᐢ₎ ༘♡</p>
                         </div>
                     </div>
-                    <div style="padding:12px 20px 20px;text-align:center;">
-                        <button id="update-notice-btn" disabled onclick="dismissUpdateNotice()" style="
+                    <div style="padding:14px 24px 22px;text-align:center;">
+                        <button id="update-notice-btn" onclick="dismissUpdateNotice()" style="
                             width:100%;
                             padding:12px;
-                            border:none;
-                            border-radius:10px;
-                            font-size:15px;
+                            border:1px solid #000;
+                            border-radius:9px;
+                            font-size:14px;
                             font-weight:600;
-                            cursor:not-allowed;
-                            background:#e0e0e0;
-                            color:#aaa;
-                            transition:all 0.3s ease;
+                            cursor:pointer;
+                            background:#fff;
+                            color:#000;
+                            transition:background 0.2s ease;
                             letter-spacing:0.5px;
-                        ">请阅读 (10s)</button>
+                        ">我知道了</button>
                     </div>
                 </div>
             `;
-            
+             
             document.body.appendChild(overlay);
-            
-            // 5秒倒计时
-            let countdown = 10;
-            const btn = document.getElementById('update-notice-btn');
-            const timer = setInterval(() => {
-                countdown--;
-                if (countdown > 0) {
-                    btn.textContent = `请阅读 (${countdown}s)`;
-                } else {
-                    clearInterval(timer);
-                    btn.disabled = false;
-                    btn.style.cursor = 'pointer';
-                    btn.style.background = 'var(--ins-pink, #ff6b9d)';
-                    btn.style.color = '#fff';
-                    btn.textContent = '我已阅读';
-                }
-            }, 1000);
         }
         
         function dismissUpdateNotice() {
@@ -2273,6 +2558,7 @@ async function saveFinanceData(key, value) {
                     if (db.intimate_requests) tables.push({ key: 'intimate_requests', table: db.intimate_requests, label: '亲密请求' });
                     if (db.offline_chats) tables.push({ key: 'offline_chats', table: db.offline_chats, label: '离线聊天' });
                     if (db.finance_data) tables.push({ key: 'finance_data', table: db.finance_data, label: '财务数据' });
+                    if (db.memory_items) tables.push({ key: 'memory_items', table: db.memory_items, label: '派生记忆索引' });
                     
                     for (let i = 0; i < tables.length; i++) {
                         const { key, table, label } = tables[i];
@@ -2540,6 +2826,7 @@ async function saveFinanceData(key, value) {
                     if (db.intimate_requests) await db.intimate_requests.clear();
                     if (db.offline_chats) await db.offline_chats.clear();
                     if (db.finance_data) await db.finance_data.clear();
+                    if (db.memory_items) await db.memory_items.clear();
                     
                     // 清空子数据库
                     try { await icityDb.diaries.clear(); await icityDb.annotations.clear(); } catch(e) { console.warn('[Import] 清空iCity失败:', e); }
@@ -2609,6 +2896,14 @@ async function saveFinanceData(key, value) {
                     }
                     if (importData.data.finance_data && db.finance_data) {
                         await db.finance_data.bulkPut(importData.data.finance_data);
+                    }
+                    if (importData.data.memory_items && db.memory_items) {
+                        try {
+                            await db.memory_items.bulkPut(importData.data.memory_items);
+                        } catch (memoryImportError) {
+                            // 派生表可由旧总结重建，绝不能因它导入失败而中断旧数据恢复。
+                            console.warn('[Import] 派生记忆索引导入失败，将在启动后重建:', memoryImportError);
+                        }
                     }
                     
                     // 导入 iCity 日记数据库
@@ -2904,7 +3199,7 @@ async function saveFinanceData(key, value) {
                                 )
                                 .toArray();
                             if (oldSummaries.length > 0) {
-                                await db.chat_summaries.bulkDelete(oldSummaries.map(s => s.id));
+                                await bulkDeleteChatSummariesWithDerivedIndex(oldSummaries.map(s => s.id));
                             }
                         } catch (e) {
                             console.warn('[ImportChar] 删除旧总结失败:', e);
@@ -2973,6 +3268,7 @@ async function saveFinanceData(key, value) {
                 if (db.intimate_requests) await db.intimate_requests.clear();
                 if (db.offline_chats) await db.offline_chats.clear();
                 if (db.finance_data) await db.finance_data.clear();
+                if (db.memory_items) await db.memory_items.clear();
                 
                 // 清空子数据库
                 try { await icityDb.diaries.clear(); await icityDb.annotations.clear(); } catch(e) { console.warn('[Clear] 清空iCity失败:', e); }
@@ -3204,7 +3500,7 @@ async function saveFinanceData(key, value) {
 
 // ===== toggleExpand / 字体 / 字号 / 颜色 / backHomePage 已移至 personalization.js =====
 
-        // ===== 桌面多页滑动（触摸滑动 + transform） =====
+        // ===== 桌面多页滑动（触摸 / 鼠标滑动 + transform） =====
         var desktopPageIndex = 0;
         var desktopTotalPages = 2;
 
@@ -3279,6 +3575,73 @@ async function saveFinanceData(key, value) {
                     }
                 }, { passive: true });
 
+                // 电脑端鼠标拖动翻页。
+                // 快速横拖用于翻页；长按后拖动仍交给 SortableJS 做图标排序。
+                let isMouseDragging = false;
+                const mouseInteractiveSelector = 'input, button, a, textarea, select, [contenteditable="true"]';
+
+                wrapper.addEventListener('mousedown', function(e) {
+                    if (e.button !== 0 || e.target.closest(mouseInteractiveSelector)) return;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    moveX = 0;
+                    isDragging = true;
+                    isMouseDragging = true;
+                    isHorizontal = null;
+                    wrapper.classList.add('mouse-dragging');
+                    track.classList.add('dragging');
+                });
+
+                document.addEventListener('mousemove', function(e) {
+                    if (!isMouseDragging || !isDragging) return;
+                    // SortableJS 已进入长按排序时，立即退出分页手势并归位。
+                    if (document.body.classList.contains('dragging-mode')) {
+                        isMouseDragging = false;
+                        isDragging = false;
+                        wrapper.classList.remove('mouse-dragging');
+                        track.classList.remove('dragging');
+                        goToPage(desktopPageIndex);
+                        return;
+                    }
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+
+                    if (isHorizontal === null && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+                        isHorizontal = Math.abs(dx) > Math.abs(dy);
+                    }
+                    if (isHorizontal === false) {
+                        isDragging = false;
+                        wrapper.classList.remove('mouse-dragging');
+                        track.classList.remove('dragging');
+                        return;
+                    }
+                    if (isHorizontal) {
+                        e.preventDefault();
+                        moveX = dx;
+                        const baseOffset = -desktopPageIndex * wrapper.offsetWidth;
+                        let offset = baseOffset + moveX;
+                        if (desktopPageIndex === 0 && moveX > 0) offset = baseOffset + moveX * 0.3;
+                        if (desktopPageIndex === desktopTotalPages - 1 && moveX < 0) offset = baseOffset + moveX * 0.3;
+                        track.style.transform = `translateX(${offset}px)`;
+                    }
+                });
+
+                document.addEventListener('mouseup', function() {
+                    if (!isMouseDragging) return;
+                    isMouseDragging = false;
+                    const shouldSwitchPage = isHorizontal && Math.abs(moveX) > SWIPE_THRESHOLD;
+                    isDragging = false;
+                    wrapper.classList.remove('mouse-dragging');
+                    track.classList.remove('dragging');
+
+                    if (shouldSwitchPage) {
+                        if (moveX < 0) goToPage(desktopPageIndex + 1);
+                        else goToPage(desktopPageIndex - 1);
+                    } else {
+                        goToPage(desktopPageIndex);
+                    }
+                });
+
                 // 点击圆点切换页面
                 dots.forEach((dot, i) => {
                     dot.addEventListener('click', function() {
@@ -3309,7 +3672,7 @@ async function saveFinanceData(key, value) {
                 }
                 
                 // 2. 有按账号隔离的聊天记录（说明跟这个账号有过互动）
-                const perUserChat = c.chat_history_by_user?.[accountId];
+                const perUserChat = getChatHistory(c, accountId);
                 if (perUserChat && perUserChat.length > 0) {
                     console.log(`[查手机] ✅ ${c.name}(id=${c.id}) - 有账号隔离聊天记录(${perUserChat.length}条)`);
                     return true;
@@ -3483,18 +3846,962 @@ async function saveFinanceData(key, value) {
                 page.style.opacity = '';
             }, 200);
         }
+
+        const FINDPHONE_DEFAULT_WALLPAPERS = [
+            'linear-gradient(160deg, #fdf6f0 0%, #fce4ec 40%, #e8daef 70%, #d5daf5 100%)',
+            'linear-gradient(160deg, #fefefe 0%, #fce4ec 50%, #f3e5f5 100%)',
+            'linear-gradient(160deg, #fafafa 0%, #e8f5e9 40%, #e3f2fd 100%)',
+            'linear-gradient(160deg, #fff8e1 0%, #ffe0b2 40%, #ffccbc 100%)',
+            'linear-gradient(160deg, #f3e5f5 0%, #e1bee7 40%, #d1c4e9 100%)',
+            'linear-gradient(160deg, #e0f7fa 0%, #b2ebf2 40%, #b2dfdb 100%)'
+        ];
+        const FINDPHONE_FALLBACK_APPS = [
+            { name: '相机', glyph: '📷', color: '#56606d', secondaryColor: '#20252c', foreground: '#ffffff', purpose: '记录日常生活' },
+            { name: '音乐', glyph: '♫', color: '#ff5f6d', secondaryColor: '#a83279', foreground: '#ffffff', purpose: '听歌和收藏歌单' },
+            { name: '备忘录', glyph: '✎', color: '#ffd86f', secondaryColor: '#f5a623', foreground: '#4d3a00', purpose: '记录想法和待办' },
+            { name: '地图', glyph: '⌖', color: '#42c97a', secondaryColor: '#168f69', foreground: '#ffffff', purpose: '导航和收藏地点' },
+            { name: '天气', glyph: '☀', color: '#56ccf2', secondaryColor: '#2f80ed', foreground: '#ffffff', purpose: '查看天气' },
+            { name: '日历', glyph: '日', color: '#ff6b6b', secondaryColor: '#d62f52', foreground: '#ffffff', purpose: '管理日程' },
+            { name: '相册', glyph: '✿', color: '#c471ed', secondaryColor: '#f64f59', foreground: '#ffffff', purpose: '保存照片' },
+            { name: '文件', glyph: '▤', color: '#5b86e5', secondaryColor: '#36d1dc', foreground: '#ffffff', purpose: '整理文件' }
+        ];
+        let findPhoneDesktopGenerating = false;
+        let findPhoneCurrentRole = null;
+        const findPhoneGeneratedAppCache = new Map();
+        let findPhoneCurrentGeneratedApp = null;
+        let findPhoneCurrentAppPlan = null;
+        let findPhoneCurrentAppTabIndex = 0;
+        let findPhoneCurrentSimItem = null;
+        let findPhoneAppRequestSequence = 0;
+        const FINDPHONE_DESKTOP_PLAN_STORAGE_KEY = 'findphone_desktop_plans_v1';
+        const FINDPHONE_DESKTOP_LOCK_STORAGE_KEY = 'findphone_desktop_locks_v1';
+
+        function readFindPhoneDesktopStorage(storageKey) {
+            try {
+                const value = JSON.parse(localStorage.getItem(storageKey) || '{}');
+                return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+            } catch (error) {
+                console.warn('[查手机桌面] 读取保存数据失败:', error);
+                return {};
+            }
+        }
+
+        function writeFindPhoneDesktopStorage(storageKey, value) {
+            const serialized = JSON.stringify(value);
+            if (typeof safeLocalStorageSet === 'function') return safeLocalStorageSet(storageKey, serialized);
+            localStorage.setItem(storageKey, serialized);
+            return true;
+        }
+
+        function getFindPhoneDesktopRoleKey(role = findPhoneCurrentRole) {
+            return String(role?.id ?? findPhoneTargetRoleId ?? '').trim();
+        }
+
+        function getFindPhoneStoredDesktopPlan(role) {
+            const roleKey = getFindPhoneDesktopRoleKey(role);
+            return roleKey ? readFindPhoneDesktopStorage(FINDPHONE_DESKTOP_PLAN_STORAGE_KEY)[roleKey] || null : null;
+        }
+
+        function saveFindPhoneDesktopPlan(role, plan) {
+            const roleKey = getFindPhoneDesktopRoleKey(role);
+            if (!roleKey || !plan) return false;
+            const plans = readFindPhoneDesktopStorage(FINDPHONE_DESKTOP_PLAN_STORAGE_KEY);
+            plans[roleKey] = plan;
+            return writeFindPhoneDesktopStorage(FINDPHONE_DESKTOP_PLAN_STORAGE_KEY, plans);
+        }
+
+        function isFindPhoneDesktopLocked(role = findPhoneCurrentRole) {
+            const roleKey = getFindPhoneDesktopRoleKey(role);
+            return Boolean(roleKey && readFindPhoneDesktopStorage(FINDPHONE_DESKTOP_LOCK_STORAGE_KEY)[roleKey]);
+        }
+
+        function setFindPhoneDesktopLocked(role, locked) {
+            const roleKey = getFindPhoneDesktopRoleKey(role);
+            if (!roleKey) return;
+            const locks = readFindPhoneDesktopStorage(FINDPHONE_DESKTOP_LOCK_STORAGE_KEY);
+            locks[roleKey] = Boolean(locked);
+            writeFindPhoneDesktopStorage(FINDPHONE_DESKTOP_LOCK_STORAGE_KEY, locks);
+        }
+
+        function normalizeFindPhoneColor(value, fallback) {
+            const color = String(value || '').trim();
+            return /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color) ? color : fallback;
+        }
+
+        function getFindPhoneDefaultVariant(role) {
+            const seed = String(role?.id || '') + String(role?.name || '') + String(role?.description || '');
+            let hash = 0;
+            for (let i = 0; i < seed.length; i++) hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+            return Math.abs(hash) % FINDPHONE_DEFAULT_WALLPAPERS.length;
+        }
+
+        function getFindPhoneFallbackApps(role) {
+            const offset = getFindPhoneDefaultVariant(role) % FINDPHONE_FALLBACK_APPS.length;
+            const rotated = FINDPHONE_FALLBACK_APPS.slice(offset).concat(FINDPHONE_FALLBACK_APPS.slice(0, offset));
+            return rotated.slice(0, 4).map(app => ({ ...app, mode: 'color' }));
+        }
+
+        function normalizeFindPhoneGeneratedApps(rawApps, role, atlas) {
+            const palette = [
+                ['#6a85b6', '#bac8e0'], ['#ff758c', '#ff7eb3'], ['#43cea2', '#185a9d'],
+                ['#7f7fd5', '#86a8e7'], ['#f7971e', '#ffd200'], ['#654ea3', '#eaafc8']
+            ];
+            const result = [];
+            const seenNames = new Set(['wechat', '微信', '百度', 'baidu']);
+
+            const appendApp = (app, index) => {
+                if (!app || typeof app !== 'object' || result.length >= 16) return;
+                const name = String(app.name || '').trim().replace(/[\r\n]/g, ' ').substring(0, 12);
+                const nameKey = name.toLowerCase().replace(/\s+/g, '');
+                if (!name || seenNames.has(nameKey)) return;
+                seenNames.add(nameKey);
+
+                const paletteEntry = palette[index % palette.length];
+                const requestedMode = String(app.mode || app.iconMode || '').toLowerCase();
+                const atlasId = String(app.atlasId || app.id || '').trim();
+                const atlasItem = requestedMode === 'atlas'
+                    ? atlas.find(item => item.id === atlasId && item.type === 'icon')
+                    : null;
+                const rawGlyph = String(app.glyph || app.symbol || name.charAt(0)).trim();
+                const glyph = Array.from(rawGlyph).slice(0, 2).join('') || name.charAt(0);
+
+                result.push({
+                    name,
+                    purpose: String(app.purpose || app.reason || '角色安装的应用').trim().substring(0, 80),
+                    mode: atlasItem ? 'atlas' : 'color',
+                    atlasId: atlasItem?.id || '',
+                    glyph,
+                    color: normalizeFindPhoneColor(app.color, paletteEntry[0]),
+                    secondaryColor: normalizeFindPhoneColor(app.secondaryColor, paletteEntry[1]),
+                    foreground: normalizeFindPhoneColor(app.foreground, '#ffffff')
+                });
+            };
+
+            (Array.isArray(rawApps) ? rawApps : []).slice(0, 16).forEach(appendApp);
+            getFindPhoneFallbackApps(role).forEach((app, index) => {
+                if (result.length < 3) appendApp(app, result.length + index);
+            });
+            return result.slice(0, 16);
+        }
+
+        function getFindPhoneFallbackPlan(role) {
+            return {
+                wallpaper: { mode: 'default', variant: getFindPhoneDefaultVariant(role) },
+                icons: {
+                    wechat: { mode: 'default' },
+                    baidu: { mode: 'default' }
+                },
+                apps: getFindPhoneFallbackApps(role),
+                textColor: '#333333',
+                reason: '桌面方案不可用，使用默认方案'
+            };
+        }
+
+        function normalizeFindPhoneDesktopChoice(choice, requiredType, atlas, fallback) {
+            const mode = String(choice?.mode || '').toLowerCase();
+            if (mode === 'image') {
+                const imageUrl = String(choice?.imageUrl || choice?.url || '').trim();
+                if (/^(?:data:image\/|blob:|https?:\/\/)/i.test(imageUrl)) {
+                    return { mode: 'image', imageUrl };
+                }
+            }
+            if (mode === 'role_image') {
+                return {
+                    mode: 'role_image',
+                    ownerAccountId: String(choice?.ownerAccountId || '').trim()
+                };
+            }
+            if (mode === 'atlas') {
+                const atlasId = String(choice?.atlasId || choice?.id || '').trim();
+                const found = atlas.find(item => item.id === atlasId && item.type === requiredType);
+                if (found) return { mode: 'atlas', atlasId: found.id };
+            }
+            if (mode === 'color') {
+                return {
+                    mode: 'color',
+                    color: normalizeFindPhoneColor(choice?.color, fallback.color || '#f2f2f7'),
+                    foreground: normalizeFindPhoneColor(choice?.foreground, fallback.foreground || '#ffffff')
+                };
+            }
+            return {
+                mode: 'default',
+                variant: Number.isFinite(Number(choice?.variant)) ? Number(choice.variant) : fallback.variant
+            };
+        }
+
+        function normalizeFindPhoneDesktopPlan(rawPlan, role, atlas) {
+            const fallback = getFindPhoneFallbackPlan(role);
+            const uninstalledApps = (Array.isArray(rawPlan?.uninstalledApps) ? rawPlan.uninstalledApps : [])
+                .map(name => getFindPhoneAppStateKey(String(name || '')))
+                .filter(Boolean)
+                .slice(0, 40);
+            const normalizedApps = normalizeFindPhoneGeneratedApps(rawPlan?.apps, role, atlas)
+                .filter(app => !uninstalledApps.includes(getFindPhoneAppStateKey(app)));
+            return {
+                wallpaper: normalizeFindPhoneDesktopChoice(rawPlan?.wallpaper, 'wallpaper', atlas, {
+                    color: '#f2f2f7',
+                    variant: fallback.wallpaper.variant
+                }),
+                icons: {
+                    wechat: normalizeFindPhoneDesktopChoice(rawPlan?.icons?.wechat, 'icon', atlas, {
+                        color: '#07c160', foreground: '#ffffff'
+                    }),
+                    baidu: normalizeFindPhoneDesktopChoice(rawPlan?.icons?.baidu, 'icon', atlas, {
+                        color: '#4e6ef2', foreground: '#ffffff'
+                    })
+                },
+                apps: normalizedApps,
+                uninstalledApps,
+                textColor: normalizeFindPhoneColor(rawPlan?.textColor, '#333333'),
+                reason: String(rawPlan?.reason || '').substring(0, 300)
+            };
+        }
+
+        async function generateFindPhoneDesktopPlan(role, atlas) {
+            const personaParts = [
+                role?.description,
+                role?.personality,
+                role?.identity?.signature,
+                role?.identity?.bio
+            ].filter(Boolean).map(value => String(value).trim());
+            const persona = personaParts.join('\n').substring(0, 3500) || '暂无详细人设';
+            const atlasMetadata = atlas.map(item => ({
+                id: item.id,
+                category: String(item.categoryName || '').substring(0, 40),
+                type: item.type,
+                keywords: String(item.keywords || '').substring(0, 240)
+            }));
+
+            const prompt = `你正在为一个虚拟角色设计其私人手机桌面。请根据角色人设和性格，决定壁纸与应用图标风格。
+
+角色名称：${role?.nick || role?.name || '角色'}
+角色人设：
+${persona}
+
+用户图集素材（只有ID、类型和关键词；请依据关键词判断是否适合）：
+${atlasMetadata.length ? JSON.stringify(atlasMetadata, null, 2) : '图集为空'}
+
+可选方式：
+1. default：保留应用默认图标；壁纸使用系统内置渐变，variant填0-5
+2. color：使用纯色，必须填写十六进制color；图标还可填写foreground作为图形颜色
+3. atlas：使用图集素材，必须填写与类型匹配的atlasId。壁纸只能选择type=wallpaper，图标只能选择type=icon
+
+要求：
+- 每一项都要根据角色审美独立决定，可以混用默认、纯色和图集
+- 图集素材不合适时不要勉强使用
+- WeChat和百度图标可以选择不同素材或颜色
+- 额外生成3到8个这个角色最可能安装的软件，apps数组不得少于3个、不得多于8个
+- 软件要明显体现角色的职业、兴趣、生活习惯和性格，可以使用真实或自然可信的软件名称
+- apps中不要重复WeChat、微信、百度，也不要生成重复软件
+- 每个软件填写1到2个字符的glyph，优先使用能代表软件用途的emoji或符号
+- 软件图标mode只能是color或atlas；color模式要填写协调的color、secondaryColor和foreground
+- purpose用一句短语说明角色为什么会安装它
+- textColor要保证时间、日期和图标名称在壁纸上清晰可读
+- 只返回JSON，不要Markdown或解释文字
+
+返回格式：
+{
+  "wallpaper": {"mode":"default|color|atlas", "variant":0, "color":"#RRGGBB", "atlasId":"素材ID"},
+  "icons": {
+    "wechat": {"mode":"default|color|atlas", "color":"#RRGGBB", "foreground":"#RRGGBB", "atlasId":"素材ID"},
+    "baidu": {"mode":"default|color|atlas", "color":"#RRGGBB", "foreground":"#RRGGBB", "atlasId":"素材ID"}
+  },
+  "apps": [
+    {"name":"软件名称", "purpose":"安装原因或用途", "mode":"color|atlas", "glyph":"图标符号", "color":"#RRGGBB", "secondaryColor":"#RRGGBB", "foreground":"#RRGGBB", "atlasId":"素材ID"}
+  ],
+  "textColor":"#RRGGBB",
+  "reason":"一句话说明为什么符合角色人设"
+}`;
+
+            const aiResult = await callAI([
+                { role: 'system', content: prompt },
+                { role: 'user', content: '请生成这个角色的手机桌面方案，只返回JSON。' }
+            ]);
+            const jsonMatch = String(aiResult || '').match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('AI未返回桌面方案JSON');
+            return normalizeFindPhoneDesktopPlan(JSON.parse(jsonMatch[0]), role, atlas);
+        }
+
+        function applyFindPhoneDesktopIcon(iconName, choice, atlas) {
+            const icon = document.getElementById(`findphone-icon-${iconName}`);
+            if (!icon) return;
+            const svg = icon.querySelector('svg');
+            const defaultBackground = iconName === 'wechat'
+                ? 'linear-gradient(135deg, #07c160 0%, #06ad56 100%)'
+                : 'linear-gradient(135deg, #2932e1 0%, #4e6ef2 100%)';
+
+            icon.style.background = defaultBackground;
+            icon.style.backgroundImage = '';
+            icon.style.backgroundSize = '';
+            icon.style.backgroundPosition = '';
+            icon.style.backgroundRepeat = '';
+            if (svg) {
+                svg.style.display = '';
+                svg.style.fill = '#ffffff';
+            }
+
+            if (choice?.mode === 'atlas') {
+                const item = atlas.find(entry => entry.id === choice.atlasId && entry.type === 'icon');
+                if (item) {
+                    icon.style.background = '#f2f2f2';
+                    icon.style.backgroundImage = 'url(' + JSON.stringify(item.url) + ')';
+                    icon.style.backgroundSize = 'cover';
+                    icon.style.backgroundPosition = 'center';
+                    icon.style.backgroundRepeat = 'no-repeat';
+                    if (svg) svg.style.display = 'none';
+                }
+            } else if (choice?.mode === 'color') {
+                icon.style.background = normalizeFindPhoneColor(choice.color, iconName === 'wechat' ? '#07c160' : '#4e6ef2');
+                if (svg) svg.style.fill = normalizeFindPhoneColor(choice.foreground, '#ffffff');
+            }
+        }
+
+        function renderFindPhoneGeneratedApps(apps, atlas) {
+            const container = document.getElementById('findphone-generated-apps');
+            if (!container) return;
+            container.replaceChildren();
+
+            const safeApps = Array.isArray(apps) ? apps.slice(0, 16) : [];
+            safeApps.forEach(app => {
+                const item = document.createElement('div');
+                item.className = 'findphone-app-icon findphone-generated-app';
+                item.title = app.purpose || app.name;
+                item.addEventListener('click', () => {
+                    openFindPhoneGeneratedApp(app);
+                });
+
+                const icon = document.createElement('div');
+                icon.className = 'findphone-icon-img findphone-generated-icon';
+                const atlasItem = app.mode === 'atlas'
+                    ? atlas.find(entry => entry.id === app.atlasId && entry.type === 'icon')
+                    : null;
+                if (atlasItem) {
+                    icon.style.background = '#f2f2f2';
+                    icon.style.backgroundImage = 'url(' + JSON.stringify(atlasItem.url) + ')';
+                    icon.style.backgroundSize = 'cover';
+                    icon.style.backgroundPosition = 'center';
+                    icon.style.backgroundRepeat = 'no-repeat';
+                } else {
+                    const color = normalizeFindPhoneColor(app.color, '#6a85b6');
+                    const secondaryColor = normalizeFindPhoneColor(app.secondaryColor, color);
+                    icon.style.background = `linear-gradient(135deg, ${color} 0%, ${secondaryColor} 100%)`;
+                    icon.style.color = normalizeFindPhoneColor(app.foreground, '#ffffff');
+                    const glyph = document.createElement('span');
+                    glyph.className = 'findphone-generated-glyph';
+                    glyph.textContent = app.glyph || app.name.charAt(0);
+                    icon.appendChild(glyph);
+                }
+
+                const label = document.createElement('div');
+                label.className = 'findphone-app-label';
+                label.textContent = app.name;
+                item.append(icon, label);
+                container.appendChild(item);
+            });
+        }
+
+        function findPhoneSimText(value, fallback = '', maxLength = 120) {
+            const text = String(value == null ? '' : value).replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim();
+            return (text || fallback).substring(0, maxLength);
+        }
+
+        function createFindPhoneFallbackAppSimulation(app) {
+            const appName = findPhoneSimText(app?.name, '应用', 24);
+            const purpose = findPhoneSimText(app?.purpose, '角色常用的软件', 80);
+            const isLeague = /英雄联盟|league\s*of\s*legends|\blol\b/i.test(appName);
+            if (isLeague) {
+                return {
+                    appName,
+                    subtitle: '召唤师峡谷 · 个人中心',
+                    heroText: '查看战绩、常用英雄与排位概览',
+                    theme: { primary: '#0f6b78', accent: '#c89b3c', background: '#eef3f3' },
+                    tabs: [
+                        { label: '首页', sections: [
+                            { title: '召唤师概览', type: 'stats', items: [
+                                { icon: '🏆', title: '单双排', subtitle: '本赛季', value: '翡翠 IV', badge: '排位', detail: '本赛季单双排当前段位为翡翠 IV，胜点 42。', actionLabel: '查看排位详情', actionResult: '已展开本赛季段位趋势与晋级记录。' },
+                                { icon: '⚔', title: '近期胜率', subtitle: '最近 20 场', value: '60%', badge: '12胜8负', detail: '最近 20 场保持 60% 胜率，平均 KDA 为 3.4。', actionLabel: '分析战绩', actionResult: '战绩分析完成：近期中路和辅助位置表现更稳定。' }
+                            ]},
+                            { title: '最近对局', type: 'list', items: [
+                                { icon: '胜', title: '排位赛 · 胜利', subtitle: '阿狸 · 9/3/11 · 32分钟前', value: '+24', badge: 'MVP', detail: '对局时长 31:46，参团率 68%，输出占比 27%。', actionLabel: '查看对局详情', actionResult: '已加载本局出装、符文与时间线（模拟数据）。' },
+                                { icon: '负', title: '排位赛 · 失败', subtitle: '拉克丝 · 4/6/13 · 2小时前', value: '-21', badge: '辅助', detail: '对局时长 28:12，视野得分 52，参团率 71%。', actionLabel: '查看对局详情', actionResult: '已加载本局团队数据与关键团战记录（模拟数据）。' }
+                            ]}
+                        ]},
+                        { label: '战绩', sections: [
+                            { title: '历史对局', type: 'list', items: [
+                                { icon: '胜', title: '匹配模式 · 胜利', subtitle: '伊泽瑞尔 · 12/4/8', value: '25:18', badge: '超神', detail: '补刀 218，伤害 31.2K，获得 3 次连杀。', actionLabel: '回顾比赛', actionResult: '比赛关键节点已整理完成。' },
+                                { icon: '胜', title: '极地大乱斗 · 胜利', subtitle: '金克丝 · 18/9/22', value: '19:44', badge: '输出最高', detail: '总伤害 42.6K，承伤 16.8K。', actionLabel: '查看数据', actionResult: '已显示队伍伤害与装备曲线。' },
+                                { icon: '负', title: '排位赛 · 失败', subtitle: '辛德拉 · 7/8/6', value: '36:09', badge: '中路', detail: '对线期领先，但后期团战失误较多。', actionLabel: '复盘对局', actionResult: '复盘建议：提高关键资源刷新前的视野控制。' }
+                            ]}
+                        ]},
+                        { label: '英雄', sections: [
+                            { title: '常用英雄', type: 'grid', items: [
+                                { icon: '🦊', title: '九尾妖狐 阿狸', subtitle: '熟练度 7', value: '58场', badge: '胜率 62%', detail: '本赛季最常用英雄，平均 KDA 4.1。', actionLabel: '查看攻略', actionResult: '已打开符文、出装与对线思路。' },
+                                { icon: '✨', title: '光辉女郎 拉克丝', subtitle: '熟练度 6', value: '31场', badge: '胜率 55%', detail: '主要用于辅助与中路位置。', actionLabel: '查看攻略', actionResult: '已打开推荐出装和技能加点。' },
+                                { icon: '⚡', title: '探险家 伊泽瑞尔', subtitle: '熟练度 5', value: '26场', badge: '胜率 54%', detail: '偏好灵活消耗型打法。', actionLabel: '查看攻略', actionResult: '已打开对局技巧与装备选择。' }
+                            ]}
+                        ]},
+                        { label: '我的', sections: [
+                            { title: '账号与收藏', type: 'list', items: [
+                                { icon: '☆', title: '收藏内容', subtitle: '英雄攻略与精彩时刻', value: '18', detail: '保存的英雄攻略、赛事视频和对局片段。', actionLabel: '打开收藏', actionResult: '已展示 18 条收藏内容。' },
+                                { icon: '⚙', title: '游戏设置', subtitle: '通知、隐私与偏好', value: '›', detail: '管理比赛提醒、好友可见范围和内容偏好。', actionLabel: '打开设置', actionResult: '设置面板已准备完成。' }
+                            ]}
+                        ]}
+                    ]
+                };
+            }
+
+            return {
+                appName,
+                subtitle: purpose,
+                heroText: `模拟 ${appName} 的主要功能与个人内容`,
+                theme: {
+                    primary: normalizeFindPhoneColor(app?.color, '#4f6ef7'),
+                    accent: normalizeFindPhoneColor(app?.secondaryColor, '#8296ff'),
+                    background: '#f5f6fa'
+                },
+                tabs: [
+                    { label: '首页', sections: [
+                        { title: '常用功能', type: 'grid', items: [
+                            { icon: app?.glyph || '◆', title: '快速开始', subtitle: purpose, value: '进入', badge: '常用', detail: `${appName} 的主要功能入口。`, actionLabel: '立即体验', actionResult: '功能已在模拟环境中打开。' },
+                            { icon: '◷', title: '最近使用', subtitle: '查看最近浏览与操作', value: '6条', detail: '这里展示角色最近在此软件中的模拟活动记录。', actionLabel: '查看记录', actionResult: '已加载最近 6 条使用记录。' }
+                        ]},
+                        { title: '为你推荐', type: 'list', items: [
+                            { icon: '✦', title: `${appName} 今日推荐`, subtitle: '根据使用习惯整理', value: '查看', badge: '推荐', detail: `结合“${purpose}”生成的个性化内容。`, actionLabel: '打开推荐', actionResult: '推荐内容已展开。' },
+                            { icon: '♡', title: '我的收藏', subtitle: '保存的内容与功能', value: '12', detail: '共保存 12 条模拟收藏内容。', actionLabel: '查看收藏', actionResult: '收藏列表已加载完成。' }
+                        ]}
+                    ]},
+                    { label: '动态', sections: [
+                        { title: '最近动态', type: 'list', items: [
+                            { icon: '1', title: '完成一次常用操作', subtitle: '今天 10:24', value: '已完成', detail: `${appName} 中的一次模拟使用记录。`, actionLabel: '查看详情', actionResult: '已展示本次操作的完整记录。' },
+                            { icon: '2', title: '收藏了新内容', subtitle: '昨天 21:08', value: '+1', detail: '新增了一条与角色兴趣相关的收藏。', actionLabel: '打开内容', actionResult: '收藏内容已打开。' }
+                        ]}
+                    ]},
+                    { label: '我的', sections: [
+                        { title: '个人中心', type: 'list', items: [
+                            { icon: '人', title: '个人资料', subtitle: '账号与使用偏好', value: '›', detail: '查看角色在此软件中的模拟资料。', actionLabel: '查看资料', actionResult: '个人资料已展开。' },
+                            { icon: '⚙', title: '设置', subtitle: '通知、隐私与外观', value: '›', detail: '管理此模拟软件的本地交互选项。', actionLabel: '打开设置', actionResult: '设置选项已展开。' }
+                        ]}
+                    ]}
+                ]
+            };
+        }
+
+        function normalizeFindPhoneAppSimulation(rawPlan, app) {
+            const fallback = createFindPhoneFallbackAppSimulation(app);
+            const allowedTypes = new Set(['list', 'grid', 'stats']);
+            const rawTabs = Array.isArray(rawPlan?.tabs) ? rawPlan.tabs.slice(0, 6) : [];
+            const tabs = rawTabs.map((tab, tabIndex) => {
+                const rawSections = Array.isArray(tab?.sections) ? tab.sections.slice(0, 8) : [];
+                const sections = rawSections.map((section, sectionIndex) => {
+                    const rawItems = Array.isArray(section?.items) ? section.items.slice(0, 100) : [];
+                    const items = rawItems.map((item, itemIndex) => ({
+                        id: `t${tabIndex}s${sectionIndex}i${itemIndex}`,
+                        icon: findPhoneSimText(item?.icon, '•', 4),
+                        title: findPhoneSimText(item?.title, '功能', 48),
+                        subtitle: findPhoneSimText(item?.subtitle, '', 100),
+                        value: findPhoneSimText(item?.value, '', 28),
+                        badge: findPhoneSimText(item?.badge, '', 24),
+                        detail: findPhoneSimText(item?.detail, item?.subtitle || '这是一个模拟功能页面。', 500),
+                        actionLabel: findPhoneSimText(item?.actionLabel, '查看详情', 24),
+                        actionResult: findPhoneSimText(item?.actionResult, '操作已在模拟环境中完成。', 240)
+                    }));
+                    return {
+                        title: findPhoneSimText(section?.title, '功能', 40),
+                        type: allowedTypes.has(section?.type) ? section.type : 'list',
+                        items
+                    };
+                }).filter(section => section.items.length);
+                return { label: findPhoneSimText(tab?.label, `页面${tabIndex + 1}`, 12), sections };
+            }).filter(tab => tab.sections.length);
+
+            return {
+                appName: findPhoneSimText(rawPlan?.appName, fallback.appName, 24),
+                subtitle: findPhoneSimText(rawPlan?.subtitle, fallback.subtitle, 80),
+                heroText: findPhoneSimText(rawPlan?.heroText, fallback.heroText, 100),
+                theme: {
+                    primary: normalizeFindPhoneColor(rawPlan?.theme?.primary, fallback.theme.primary),
+                    accent: normalizeFindPhoneColor(rawPlan?.theme?.accent, fallback.theme.accent),
+                    background: normalizeFindPhoneColor(rawPlan?.theme?.background, fallback.theme.background)
+                },
+                tabs: tabs.length ? tabs : fallback.tabs
+            };
+        }
+
+        async function generateFindPhoneAppSimulation(app, role) {
+            const persona = [role?.description, role?.personality, role?.identity?.signature, role?.identity?.bio]
+                .filter(Boolean).map(value => String(value).trim()).join('\n').substring(0, 2600) || '暂无详细人设';
+            const appName = findPhoneSimText(app?.name, '应用', 24);
+            const purpose = findPhoneSimText(app?.purpose, '角色常用的软件', 100);
+            const prompt = `请为虚拟手机中的“${appName}”设计一个仿照该软件真实产品逻辑的可交互模拟页面数据。
+
+软件名称：${appName}
+角色安装用途：${purpose}
+手机主人：${role?.nick || role?.name || '角色'}
+角色人设：${persona}
+
+要求：
+1. 识别该软件真实的核心用途和常见信息架构。若是游戏，提供战绩、角色/英雄、排行等；若是音乐，提供歌单、播放记录等；若是购物，提供商品、订单、收藏等。不要给所有软件套同一种模板。
+2. 生成3到5个tab，每个tab包含1到4个section，每个section包含1到6个可点击item。
+3. 所有数据都是符合角色人设的虚构模拟数据，不声称来自真实联网查询。
+4. item的detail是点击后展示的详情；actionLabel是详情页按钮文字；actionResult是点击按钮后的模拟反馈。
+5. type只能是list、grid或stats。icon使用1到2个字符或emoji。颜色使用十六进制。
+6. 只返回JSON，不要Markdown，不要HTML，不要脚本。
+
+JSON格式：
+{
+  "appName":"软件名",
+  "subtitle":"页面副标题",
+  "heroText":"首页头部说明",
+  "theme":{"primary":"#RRGGBB","accent":"#RRGGBB","background":"#RRGGBB"},
+  "tabs":[{"label":"首页","sections":[{"title":"板块名","type":"list|grid|stats","items":[{"icon":"图标","title":"标题","subtitle":"副标题","value":"数据","badge":"标签","detail":"详细说明","actionLabel":"按钮文字","actionResult":"点击反馈"}]}]}]
+}`;
+            const result = await callAI([
+                { role: 'system', content: prompt },
+                { role: 'user', content: `生成“${appName}”的模拟交互页面，只返回JSON。` }
+            ], { max_tokens: 3000 });
+            const jsonMatch = String(result || '').match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('接口未返回有效页面数据');
+            return normalizeFindPhoneAppSimulation(JSON.parse(jsonMatch[0]), app);
+        }
+
+        function getFindPhoneGeneratedAppCacheKey(app) {
+            return getFindPhoneGeneratedAppCacheKeyForRole(findPhoneCurrentRole || { id: findPhoneTargetRoleId }, app);
+        }
+
+        function getFindPhoneGeneratedAppCacheKeyForRole(role, app) {
+            return `${role?.id || 'role'}::${findPhoneSimText(app?.name, 'app', 40).toLowerCase()}`;
+        }
+
+        function getFindPhoneAppStateKey(appOrName) {
+            const name = typeof appOrName === 'string' ? appOrName : appOrName?.name;
+            return findPhoneSimText(name, 'app', 40).toLowerCase().replace(/\s+/g, '').replace(/[.\[\]$]/g, '_');
+        }
+
+        async function loadFindPhonePersistedAppState(role, app) {
+            if (!role?.id || !app?.name) return null;
+            try {
+                const freshRole = await db.characters.get(role.id);
+                const state = freshRole?.fp_generated_app_states?.[getFindPhoneAppStateKey(app)];
+                if (!state?.plan) return null;
+                return {
+                    ...state,
+                    app: { ...app, ...(state.app || {}) },
+                    plan: normalizeFindPhoneAppSimulation(state.plan, app)
+                };
+            } catch (error) {
+                console.warn('[查手机应用页] 读取持久化数据失败:', error);
+                return null;
+            }
+        }
+
+        async function saveFindPhonePersistedAppState(role, app, plan, extra = {}) {
+            if (!role?.id || !app?.name || !plan) return;
+            try {
+                const freshRole = await db.characters.get(role.id);
+                if (!freshRole) return;
+                const states = { ...(freshRole.fp_generated_app_states || {}) };
+                const key = getFindPhoneAppStateKey(app);
+                const previous = states[key] || {};
+                states[key] = {
+                    ...previous,
+                    ...extra,
+                    app: { ...(previous.app || {}), ...app },
+                    plan: normalizeFindPhoneAppSimulation(plan, app),
+                    installed: extra.installed !== false,
+                    createdAt: previous.createdAt || Date.now(),
+                    updatedAt: Date.now()
+                };
+                await safeDexieUpdate(db.characters, role.id, {
+                    [`fp_generated_app_states.${key}`]: states[key]
+                }, `保存应用数据[${app.name}]`);
+            } catch (error) {
+                console.warn('[查手机应用页] 保存持久化数据失败:', error);
+            }
+        }
+
+        async function openFindPhoneGeneratedApp(app, forceRegenerate = false) {
+            if (!app) return;
+            const page = document.getElementById('fp-generated-app-page');
+            const loading = document.getElementById('fp-sim-loading');
+            const appName = findPhoneSimText(app.name, '应用', 24);
+            const requestId = ++findPhoneAppRequestSequence;
+            findPhoneCurrentGeneratedApp = { ...app };
+            findPhoneCurrentAppTabIndex = 0;
+            findPhoneCurrentSimItem = null;
+
+            document.getElementById('fp-sim-nav-title').textContent = appName;
+            document.getElementById('fp-sim-nav-subtitle').textContent = findPhoneSimText(app.purpose, '模拟交互页面', 50);
+            document.getElementById('fp-sim-loading-title').textContent = `正在构建 ${appName}`;
+            document.getElementById('fp-sim-search-input').value = '';
+            closeFindPhoneSimDetail();
+            page.style.display = 'flex';
+
+            const cacheKey = getFindPhoneGeneratedAppCacheKey(app);
+            if (!forceRegenerate && findPhoneGeneratedAppCache.has(cacheKey)) {
+                findPhoneCurrentAppPlan = findPhoneGeneratedAppCache.get(cacheKey);
+                renderFindPhoneAppSimulation(findPhoneCurrentAppPlan, app);
+                return;
+            }
+
+            if (!forceRegenerate) {
+                const persistedState = await loadFindPhonePersistedAppState(findPhoneCurrentRole, app);
+                if (requestId !== findPhoneAppRequestSequence) return;
+                if (persistedState?.plan) {
+                    findPhoneGeneratedAppCache.set(cacheKey, persistedState.plan);
+                    findPhoneCurrentAppPlan = persistedState.plan;
+                    renderFindPhoneAppSimulation(persistedState.plan, app);
+                    return;
+                }
+            }
+
+            loading.style.display = 'flex';
+            try {
+                const plan = await generateFindPhoneAppSimulation(app, findPhoneCurrentRole);
+                if (requestId !== findPhoneAppRequestSequence) return;
+                findPhoneGeneratedAppCache.set(cacheKey, plan);
+                await saveFindPhonePersistedAppState(findPhoneCurrentRole, app, plan, { installed: true });
+                findPhoneCurrentAppPlan = plan;
+                renderFindPhoneAppSimulation(plan, app);
+            } catch (error) {
+                console.warn('[查手机应用页] 页面生成失败，使用内置模拟页面:', error);
+                if (requestId !== findPhoneAppRequestSequence) return;
+                const fallback = createFindPhoneFallbackAppSimulation(app);
+                findPhoneGeneratedAppCache.set(cacheKey, fallback);
+                await saveFindPhonePersistedAppState(findPhoneCurrentRole, app, fallback, { installed: true });
+                findPhoneCurrentAppPlan = fallback;
+                renderFindPhoneAppSimulation(fallback, app);
+                showToast('页面生成失败，已打开内置模拟页面');
+            } finally {
+                if (requestId === findPhoneAppRequestSequence) loading.style.display = 'none';
+            }
+        }
+
+        function renderFindPhoneAppSimulation(plan, app) {
+            const page = document.getElementById('fp-generated-app-page');
+            page.style.setProperty('--fp-sim-primary', plan.theme.primary);
+            page.style.setProperty('--fp-sim-accent', plan.theme.accent);
+            page.style.setProperty('--fp-sim-bg', plan.theme.background);
+            document.getElementById('fp-sim-nav-title').textContent = plan.appName;
+            document.getElementById('fp-sim-hero-title').textContent = plan.appName;
+            document.getElementById('fp-sim-hero-subtitle').textContent = plan.heroText;
+            document.getElementById('fp-sim-hero-icon').textContent = findPhoneSimText(app?.glyph, plan.appName.charAt(0), 4);
+
+            const tabs = document.getElementById('fp-sim-tabs');
+            tabs.replaceChildren();
+            plan.tabs.forEach((tab, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'fp-sim-tab' + (index === findPhoneCurrentAppTabIndex ? ' active' : '');
+                button.textContent = tab.label;
+                button.addEventListener('click', () => switchFindPhoneSimTab(index));
+                tabs.appendChild(button);
+            });
+            renderFindPhoneSimTab(findPhoneCurrentAppTabIndex);
+        }
+
+        function switchFindPhoneSimTab(index) {
+            if (!findPhoneCurrentAppPlan?.tabs?.[index]) return;
+            findPhoneCurrentAppTabIndex = index;
+            document.querySelectorAll('#fp-sim-tabs .fp-sim-tab').forEach((tab, tabIndex) => {
+                tab.classList.toggle('active', tabIndex === index);
+            });
+            renderFindPhoneSimTab(index);
+        }
+
+        function renderFindPhoneSimTab(index) {
+            const content = document.getElementById('fp-sim-content');
+            const tab = findPhoneCurrentAppPlan?.tabs?.[index];
+            content.replaceChildren();
+            if (!tab) return;
+
+            tab.sections.forEach(section => {
+                const sectionEl = document.createElement('section');
+                sectionEl.className = 'fp-sim-section';
+                const title = document.createElement('div');
+                title.className = 'fp-sim-section-title';
+                title.textContent = section.title;
+                const body = document.createElement('div');
+                body.className = `fp-sim-section-body ${section.type}`;
+
+                section.items.forEach(item => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'fp-sim-item';
+                    button.dataset.search = [item.title, item.subtitle, item.value, item.badge, item.detail].join(' ').toLowerCase();
+                    button.addEventListener('click', () => openFindPhoneSimItemDetail(item));
+
+                    const icon = document.createElement('span');
+                    icon.className = 'fp-sim-item-icon';
+                    icon.textContent = item.icon;
+                    const copy = document.createElement('span');
+                    copy.className = 'fp-sim-item-copy';
+                    const itemTitle = document.createElement('span');
+                    itemTitle.className = 'fp-sim-item-title';
+                    itemTitle.textContent = item.title;
+                    const subtitle = document.createElement('span');
+                    subtitle.className = 'fp-sim-item-subtitle';
+                    subtitle.textContent = item.subtitle;
+                    copy.append(itemTitle, subtitle);
+                    button.append(icon, copy);
+
+                    if (item.value) {
+                        const value = document.createElement('span');
+                        value.className = 'fp-sim-item-value';
+                        value.textContent = item.value;
+                        button.appendChild(value);
+                    }
+                    if (item.badge) {
+                        const badge = document.createElement('span');
+                        badge.className = 'fp-sim-item-badge';
+                        badge.textContent = item.badge;
+                        button.appendChild(badge);
+                    }
+                    body.appendChild(button);
+                });
+                sectionEl.append(title, body);
+                content.appendChild(sectionEl);
+            });
+            filterFindPhoneSimItems(document.getElementById('fp-sim-search-input')?.value || '');
+            document.querySelector('#fp-generated-app-page .fp-sim-main')?.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function filterFindPhoneSimItems(query) {
+            const normalized = String(query || '').trim().toLowerCase();
+            document.querySelectorAll('#fp-sim-content .fp-sim-item').forEach(item => {
+                item.style.display = !normalized || item.dataset.search.includes(normalized) ? '' : 'none';
+            });
+            document.querySelectorAll('#fp-sim-content .fp-sim-section').forEach(section => {
+                const hasVisibleItem = Array.from(section.querySelectorAll('.fp-sim-item')).some(item => item.style.display !== 'none');
+                section.style.display = hasVisibleItem ? '' : 'none';
+            });
+        }
+
+        function openFindPhoneSimItemDetail(item) {
+            findPhoneCurrentSimItem = item;
+            document.getElementById('fp-sim-detail-badge').textContent = item.badge || '功能详情';
+            document.getElementById('fp-sim-detail-title').textContent = item.title;
+            document.getElementById('fp-sim-detail-subtitle').textContent = [item.subtitle, item.value].filter(Boolean).join(' · ');
+            document.getElementById('fp-sim-detail-text').textContent = item.detail;
+            document.getElementById('fp-sim-detail-action').textContent = item.actionLabel || '查看';
+            const result = document.getElementById('fp-sim-detail-result');
+            result.style.display = 'none';
+            result.textContent = '';
+            document.getElementById('fp-sim-detail-overlay').style.display = 'flex';
+        }
+
+        function closeFindPhoneSimDetail() {
+            const overlay = document.getElementById('fp-sim-detail-overlay');
+            if (overlay) overlay.style.display = 'none';
+            findPhoneCurrentSimItem = null;
+        }
+
+        function runFindPhoneSimAction() {
+            if (!findPhoneCurrentSimItem) return;
+            const result = document.getElementById('fp-sim-detail-result');
+            result.textContent = findPhoneCurrentSimItem.actionResult || '操作已在模拟环境中完成。';
+            result.style.display = 'block';
+            const button = document.getElementById('fp-sim-detail-action');
+            button.textContent = '已完成';
+            setTimeout(() => {
+                if (findPhoneCurrentSimItem && button) button.textContent = findPhoneCurrentSimItem.actionLabel || '查看';
+            }, 1200);
+        }
+
+        function regenerateFindPhoneGeneratedApp() {
+            if (findPhoneCurrentGeneratedApp) openFindPhoneGeneratedApp(findPhoneCurrentGeneratedApp, true);
+        }
+
+        function closeFindPhoneGeneratedApp() {
+            findPhoneAppRequestSequence++;
+            const page = document.getElementById('fp-generated-app-page');
+            if (page) page.style.display = 'none';
+            const loading = document.getElementById('fp-sim-loading');
+            if (loading) loading.style.display = 'none';
+            closeFindPhoneSimDetail();
+        }
+
+        function updateFindPhoneDesktopSettingsUI() {
+            const role = findPhoneCurrentRole;
+            const locked = isFindPhoneDesktopLocked(role);
+            const row = document.getElementById('fp-desktop-lock-row');
+            const title = document.getElementById('fp-desktop-lock-title');
+            const description = document.getElementById('fp-desktop-lock-description');
+            const owner = document.getElementById('fp-desktop-settings-owner');
+            if (row) {
+                row.classList.toggle('locked', locked);
+                row.setAttribute('aria-pressed', locked ? 'true' : 'false');
+            }
+            if (title) title.textContent = locked ? '桌面已锁定' : '锁定桌面';
+            if (description) {
+                description.textContent = locked
+                    ? '锁定状态已保存，暂不限制桌面操作'
+                    : '锁定状态将被保存，供后续功能使用';
+            }
+            if (owner) owner.textContent = `${role?.nick || role?.name || '当前角色'}的手机桌面`;
+        }
+
+        function openFindPhoneDesktopSettings() {
+            const page = document.getElementById('findphone-desktop-settings');
+            if (!page || !findPhoneCurrentRole) return;
+            updateFindPhoneDesktopSettingsUI();
+            page.style.display = 'flex';
+        }
+
+        function closeFindPhoneDesktopSettings() {
+            const page = document.getElementById('findphone-desktop-settings');
+            if (page) page.style.display = 'none';
+            const loading = document.getElementById('fp-desktop-settings-loading');
+            if (loading) loading.style.display = 'none';
+        }
+
+        function toggleFindPhoneDesktopLock() {
+            if (!findPhoneCurrentRole || findPhoneDesktopGenerating) return;
+            const locked = !isFindPhoneDesktopLocked(findPhoneCurrentRole);
+            setFindPhoneDesktopLocked(findPhoneCurrentRole, locked);
+            updateFindPhoneDesktopSettingsUI();
+            showToast(locked ? '桌面已锁定' : '桌面已解锁');
+        }
+
+        function clearFindPhoneGeneratedAppCacheForRole(role) {
+            const prefix = `${getFindPhoneDesktopRoleKey(role)}::`;
+            for (const key of findPhoneGeneratedAppCache.keys()) {
+                if (key.startsWith(prefix)) findPhoneGeneratedAppCache.delete(key);
+            }
+        }
+
+        async function regenerateFindPhoneDesktop() {
+            const role = findPhoneCurrentRole;
+            if (!role || findPhoneDesktopGenerating) return;
+            findPhoneDesktopGenerating = true;
+            const loading = document.getElementById('fp-desktop-settings-loading');
+            const button = document.getElementById('fp-desktop-regenerate-button');
+            if (loading) loading.style.display = 'flex';
+            if (button) button.disabled = true;
+
+            try {
+                const atlas = typeof window.getDesktopImageAtlas === 'function'
+                    ? await window.getDesktopImageAtlas()
+                    : [];
+                const desktopPlan = await generateFindPhoneDesktopPlan(role, atlas);
+                saveFindPhoneDesktopPlan(role, desktopPlan);
+                clearFindPhoneGeneratedAppCacheForRole(role);
+                applyFindPhoneDesktopPlan(desktopPlan, atlas, role);
+                showToast('桌面已重新生成并保存');
+            } catch (error) {
+                console.warn('[查手机桌面] 重新生成失败，保留原桌面:', error);
+                showToast('重新生成失败，已保留原桌面');
+            } finally {
+                findPhoneDesktopGenerating = false;
+                if (loading) loading.style.display = 'none';
+                if (button) button.disabled = false;
+                updateFindPhoneDesktopSettingsUI();
+            }
+        }
+
+        function applyFindPhoneDesktopPlan(plan, atlas, role) {
+            const desktop = document.getElementById('findphone-desktop');
+            const wallpaper = document.getElementById('findphone-wallpaper');
+            const wallpaperChoice = plan?.wallpaper || {};
+
+            wallpaper.style.background = FINDPHONE_DEFAULT_WALLPAPERS[getFindPhoneDefaultVariant(role)];
+            wallpaper.style.backgroundImage = '';
+            wallpaper.style.backgroundSize = '';
+            wallpaper.style.backgroundPosition = '';
+            wallpaper.style.backgroundRepeat = '';
+
+            // 图片本体按当前用户账号隔离。即使桌面方案由旧版本保存过 ownerAccountId，
+            // 也不能在切换账号后把另一个用户发给角色的图片显示出来。
+            const roleWallpaperOwnerId = String(findPhoneTargetAccountId || getCurrentAccountId() || '');
+            const roleWallpaperImage = roleWallpaperOwnerId
+                ? role?.fp_desktop_wallpaper_by_user?.[roleWallpaperOwnerId] || ''
+                : role?.fp_desktop_wallpaper || '';
+
+            if (wallpaperChoice.mode === 'role_image' && roleWallpaperImage) {
+                wallpaper.style.background = '#f2f2f7';
+                wallpaper.style.backgroundImage = 'url(' + JSON.stringify(roleWallpaperImage) + ')';
+                wallpaper.style.backgroundSize = 'cover';
+                wallpaper.style.backgroundPosition = 'center';
+                wallpaper.style.backgroundRepeat = 'no-repeat';
+            } else if (wallpaperChoice.mode === 'image' && wallpaperChoice.imageUrl) {
+                wallpaper.style.background = '#f2f2f7';
+                wallpaper.style.backgroundImage = 'url(' + JSON.stringify(wallpaperChoice.imageUrl) + ')';
+                wallpaper.style.backgroundSize = 'cover';
+                wallpaper.style.backgroundPosition = 'center';
+                wallpaper.style.backgroundRepeat = 'no-repeat';
+            } else if (wallpaperChoice.mode === 'atlas') {
+                const item = atlas.find(entry => entry.id === wallpaperChoice.atlasId && entry.type === 'wallpaper');
+                if (item) {
+                    wallpaper.style.background = '#f2f2f7';
+                    wallpaper.style.backgroundImage = 'url(' + JSON.stringify(item.url) + ')';
+                    wallpaper.style.backgroundSize = 'cover';
+                    wallpaper.style.backgroundPosition = 'center';
+                    wallpaper.style.backgroundRepeat = 'no-repeat';
+                }
+            } else if (wallpaperChoice.mode === 'color') {
+                wallpaper.style.background = normalizeFindPhoneColor(wallpaperChoice.color, '#f2f2f7');
+            } else {
+                const variant = Math.abs(Number(wallpaperChoice.variant) || 0) % FINDPHONE_DEFAULT_WALLPAPERS.length;
+                wallpaper.style.background = FINDPHONE_DEFAULT_WALLPAPERS[variant];
+            }
+
+            applyFindPhoneDesktopIcon('wechat', plan?.icons?.wechat, atlas);
+            applyFindPhoneDesktopIcon('baidu', plan?.icons?.baidu, atlas);
+            renderFindPhoneGeneratedApps(plan?.apps, atlas);
+
+            const textColor = normalizeFindPhoneColor(plan?.textColor, '#333333');
+            desktop.querySelectorAll('.findphone-statusbar, .findphone-statusbar-time, .findphone-statusbar-icons, .findphone-lock-time, .findphone-lock-date, .findphone-app-label, .findphone-owner-label')
+                .forEach(element => { element.style.color = textColor; });
+            const homeBar = desktop.querySelector('.findphone-home-bar');
+            if (homeBar) {
+                const lightText = /^#(?:fff|ffffff|f[0-9a-f]{5})$/i.test(textColor);
+                homeBar.style.background = lightText ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.3)';
+            }
+            desktop.dataset.desktopReason = plan?.reason || '';
+            console.log('[查手机桌面] 桌面方案已应用:', plan);
+        }
         
         // 第三步：打开角色的手机桌面
         async function openFindPhoneDesktop(role) {
+            if (findPhoneDesktopGenerating) return;
+            findPhoneDesktopGenerating = true;
             findPhoneTargetRoleId = String(role.id);
+            findPhoneCurrentRole = role;
+
+            const generatingOverlay = document.getElementById('findphone-desktop-generating');
+            const storedPlan = getFindPhoneStoredDesktopPlan(role);
+            if (generatingOverlay) generatingOverlay.style.display = storedPlan ? 'none' : 'flex';
+            let atlas = [];
+            let desktopPlan = storedPlan ? null : getFindPhoneFallbackPlan(role);
+            try {
+                atlas = typeof window.getDesktopImageAtlas === 'function'
+                    ? await window.getDesktopImageAtlas()
+                    : [];
+                if (storedPlan) {
+                    desktopPlan = normalizeFindPhoneDesktopPlan(storedPlan, role, atlas);
+                } else {
+                    desktopPlan = await generateFindPhoneDesktopPlan(role, atlas);
+                    saveFindPhoneDesktopPlan(role, desktopPlan);
+                }
+            } catch (error) {
+                if (storedPlan) {
+                    console.warn('[查手机桌面] 已保存桌面读取失败，使用兼容方案:', error);
+                    desktopPlan = normalizeFindPhoneDesktopPlan(storedPlan, role, []);
+                } else {
+                    console.warn('[查手机桌面] 生成失败，使用默认方案:', error);
+                    desktopPlan = getFindPhoneFallbackPlan(role);
+                    saveFindPhoneDesktopPlan(role, desktopPlan);
+                    showToast('桌面生成失败，已使用并保存默认桌面');
+                }
+            } finally {
+                if (generatingOverlay) generatingOverlay.style.display = 'none';
+                findPhoneDesktopGenerating = false;
+            }
             
             const desktop = document.getElementById('findphone-desktop');
             const ownerLabel = document.getElementById('findphone-owner-name');
             const timeEl = document.getElementById('findphone-time');
             const lockTime = document.getElementById('findphone-lock-time');
             const lockDate = document.getElementById('findphone-lock-date');
-            const wallpaper = document.getElementById('findphone-wallpaper');
-            
             ownerLabel.textContent = (role.nick || role.name) + ' 的手机';
             
             const now = new Date();
@@ -3505,17 +4812,9 @@ async function saveFinanceData(key, value) {
             
             const weekdays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
             lockDate.textContent = (now.getMonth()+1) + '月' + now.getDate() + '日 ' + weekdays[now.getDay()];
-            
-            // 淡雅壁纸色
-            const wallpapers = [
-                'linear-gradient(160deg, #fdf6f0 0%, #fce4ec 40%, #e8daef 70%, #d5daf5 100%)',
-                'linear-gradient(160deg, #fefefe 0%, #fce4ec 50%, #f3e5f5 100%)',
-                'linear-gradient(160deg, #fafafa 0%, #e8f5e9 40%, #e3f2fd 100%)',
-                'linear-gradient(160deg, #fff8e1 0%, #ffe0b2 40%, #ffccbc 100%)',
-                'linear-gradient(160deg, #f3e5f5 0%, #e1bee7 40%, #d1c4e9 100%)',
-                'linear-gradient(160deg, #e0f7fa 0%, #b2ebf2 40%, #b2dfdb 100%)',
-            ];
-            wallpaper.style.background = wallpapers[Math.floor(Math.random() * wallpapers.length)];
+
+            applyFindPhoneDesktopPlan(desktopPlan, atlas, role);
+            updateFindPhoneDesktopSettingsUI();
             
             // 隐藏角色选择页，显示桌面
             document.getElementById('findphone-roles-page').style.display = 'none';
@@ -3532,9 +4831,12 @@ async function saveFinanceData(key, value) {
                 desktop.style.transform = '';
                 desktop.style.opacity = '';
                 findPhoneTargetRoleId = null;
+                findPhoneCurrentRole = null;
+                closeFindPhoneGeneratedApp();
+                closeFindPhoneDesktopSettings();
             }, 200);
         }
-        
+
         // 已验证过的角色ID集合（登录一次后不再要求输入密码，持久化到localStorage）
         const fpWechatVerified = new Set(JSON.parse(localStorage.getItem('fpWechatVerified') || '[]'));
         function saveFpWechatVerified() {
@@ -3925,7 +5227,7 @@ ${loreContext}
                     const userChar = await db.characters.get(userCharId);
                     if (userChar) {
                         // 获取该NPC和用户的聊天记录
-                        const chatHistory = roleChar?.chat_history_by_user?.[accountId] || roleChar?.chat_history || [];
+                        const chatHistory = getChatHistory(roleChar, accountId);
                         const lastMsg = chatHistory.length > 0 ? chatHistory[chatHistory.length - 1] : null;
                         chatContacts.push({
                             char: userChar,
@@ -5849,7 +7151,7 @@ ${isLocked ? '为已有的群聊生成新的聊天消息（接续之前的对话
          * @param {string} accountId - 用户账号ID
          * @param {string} activityDesc - AI输出的活动描述
          */
-        async function generateCharAutonomousActivity(charId, accountId, activityDesc) {
+        async function generateCharAutonomousActivityLegacy(charId, accountId, activityDesc) {
             console.log('[自主活动] 开始生成，角色ID:', charId, '描述:', activityDesc);
             
             const char = await db.characters.get(charId);
@@ -6026,7 +7328,685 @@ ${existingChatsContext.join('\n\n')}
                 console.error('[自主活动] AI调用失败:', e);
             }
         }
-        
+
+        // ===== 统一角色自主行动引擎 =====
+
+        const autonomousActionExecutionLocks = new Set();
+
+        function getCharAutonomousContextSnapshot(char) {
+            const storedDesktopPlan = getFindPhoneStoredDesktopPlan(char);
+            const desktopPlan = JSON.parse(JSON.stringify(storedDesktopPlan || getFindPhoneFallbackPlan(char)));
+            const uninstalledKeys = new Set((Array.isArray(desktopPlan.uninstalledApps) ? desktopPlan.uninstalledApps : [])
+                .map(name => getFindPhoneAppStateKey(name)));
+            desktopPlan.apps = (Array.isArray(desktopPlan.apps) ? desktopPlan.apps : [])
+                .filter(app => !uninstalledKeys.has(getFindPhoneAppStateKey(app)));
+            const installedApps = Array.isArray(desktopPlan.apps) ? desktopPlan.apps : [];
+            const appStates = char?.fp_generated_app_states || {};
+            const recentActivities = (Array.isArray(char?.activity_logs) ? char.activity_logs : [])
+                .slice(-20)
+                .map(item => `${new Date(item.time || Date.now()).toLocaleString('zh-CN')}：${findPhoneSimText(item.text, '', 160)}`);
+            const extraAppNames = installedApps
+                .map(app => findPhoneSimText(app?.name, '', 24))
+                .filter(Boolean);
+            const availableAppsText = [
+                '- WeChat：可以通过 chats 与手机联系人聊天，通过 moments 发朋友圈',
+                '- 百度：可以通过 searches 产生新的搜索记录',
+                ...extraAppNames.map(name => `- ${name}：可以打开或使用；安装、卸载时 appName 必须原样填写“${name}”`)
+            ].join('\n');
+
+            return {
+                storedDesktopPlan,
+                desktopPlan,
+                installedApps,
+                appStates,
+                recentActivities,
+                extraAppNames,
+                availableAppsText
+            };
+        }
+
+        function buildCharAutonomousDirectiveContext(char) {
+            const snapshot = getCharAutonomousContextSnapshot(char);
+            const recentText = snapshot.recentActivities.length
+                ? snapshot.recentActivities.join('\n')
+                : '暂无近期自主活动';
+            return `【你此刻真实的手机桌面（每次生成手机活动指令都必须以此为准）】
+${snapshot.availableAppsText}
+
+【你最近做过的活动（避免重复，并延续活动上下文）】
+${recentText}
+
+生成 PHONE_ACTIVITY 前，必须同时结合上方“你的记忆”、当前对话和这里的真实状态。
+- 使用现有APP时，只能使用清单中确实存在的APP，名称必须原样写出，禁止编造未安装APP。
+- 想安装新APP时，描述中必须明确写“下载/安装 + APP准确名称”。
+- 想卸载APP时，只能卸载上面列出的额外APP，描述中必须明确写“卸载 + 清单中的准确名称”。
+- 不要把计划、想象或尚未成功的操作写成已经发生的活动。`;
+        }
+
+        function buildRolePhoneImagePersonalizationPrompt(char) {
+            if (!char?.allow_auto_avatar && !char?.allow_autonomous_activity) return '';
+            return `
+【用对方发送的真实图片装饰你自己的手机】
+当对方在聊天中发送真实图片时，你已经能直接看见并识别图片内容。请结合你的人设、审美、当下情绪、你们的关系和图片构图，自主决定是否使用；不是每张图都要设置。
+
+可用指令：
+- ((USE_IMAGE_AS_PHONE_CHAT_BACKGROUND: 序号))：把该图片设为你自己手机的微信聊天背景。
+- ((USE_IMAGE_AS_PHONE_WALLPAPER: 序号))：把该图片设为你自己手机的桌面壁纸。
+
+规则：
+- 序号从最近的真实图片向前数，1代表最近一张。
+- 聊天背景要兼顾消息可读性；桌面壁纸要考虑整体构图和图标可读性。
+- 只允许使用对方发送的真实图片，严禁使用表情包、图片卡片或系统通知图片。
+- 通常在两种用途里选择更符合人设的一种，也可以两种都不选；除非剧情和人设非常合理，不要同一张图同时设置两处。
+- 指令只会修改“查手机”中属于你的聊天背景或桌面壁纸，绝不会修改对方自己的聊天界面或主桌面。
+- 可以配合自然回复，例如：这张很合我口味 我拿来当壁纸了|||((USE_IMAGE_AS_PHONE_WALLPAPER: 1))`;
+        }
+
+        function normalizeAutonomousAppItem(item, fallbackTitle = '新活动') {
+            return {
+                id: `auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                icon: findPhoneSimText(item?.icon, '•', 4),
+                title: findPhoneSimText(item?.title, fallbackTitle, 48),
+                subtitle: findPhoneSimText(item?.subtitle, '', 100),
+                value: findPhoneSimText(item?.value, '', 28),
+                badge: findPhoneSimText(item?.badge, '', 24),
+                detail: findPhoneSimText(item?.detail, item?.subtitle || '角色在应用中产生了一条新记录。', 500),
+                actionLabel: findPhoneSimText(item?.actionLabel, '查看详情', 24),
+                actionResult: findPhoneSimText(item?.actionResult, '已打开这条活动记录。', 240)
+            };
+        }
+
+        function normalizeAutonomousAppMeta(rawApp, fallbackName, index = 0) {
+            const palette = [
+                ['#6a85b6', '#bac8e0'], ['#ff758c', '#ff7eb3'], ['#43cea2', '#185a9d'],
+                ['#7f7fd5', '#86a8e7'], ['#f7971e', '#ffd200'], ['#654ea3', '#eaafc8']
+            ][index % 6];
+            const name = findPhoneSimText(rawApp?.name || fallbackName, '新应用', 12);
+            const rawGlyph = findPhoneSimText(rawApp?.glyph || name.charAt(0), name.charAt(0), 4);
+            return {
+                name,
+                purpose: findPhoneSimText(rawApp?.purpose, '角色新安装的应用', 80),
+                mode: 'color',
+                atlasId: '',
+                glyph: Array.from(rawGlyph).slice(0, 2).join(''),
+                color: normalizeFindPhoneColor(rawApp?.color, palette[0]),
+                secondaryColor: normalizeFindPhoneColor(rawApp?.secondaryColor, palette[1]),
+                foreground: normalizeFindPhoneColor(rawApp?.foreground, '#ffffff')
+            };
+        }
+
+        function summarizeFindPhoneAppStateForAutonomy(app, state) {
+            const plan = state?.plan;
+            if (!plan?.tabs) return { name: app.name, purpose: app.purpose, generated: false };
+            return {
+                name: app.name,
+                purpose: app.purpose,
+                generated: true,
+                tabs: plan.tabs.slice(0, 6).map(tab => ({
+                    label: tab.label,
+                    sections: (tab.sections || []).slice(0, 6).map(section => ({
+                        title: section.title,
+                        type: section.type,
+                        recentItems: (section.items || []).slice(0, 6).map(item => ({
+                            title: item.title,
+                            subtitle: item.subtitle,
+                            value: item.value,
+                            badge: item.badge
+                        }))
+                    }))
+                }))
+            };
+        }
+
+        function normalizeCharAutonomousPlan(rawPlan, char, installedApps) {
+            const allowedActionTypes = new Set(['open', 'update', 'install', 'uninstall']);
+            const allowedOperations = new Set(['append_items', 'upsert_item']);
+            const offlineActivities = (Array.isArray(rawPlan?.offlineActivities) ? rawPlan.offlineActivities : [])
+                .map(item => findPhoneSimText(typeof item === 'string' ? item : item?.text, '', 180))
+                .filter(text => text && !/(?:安装|卸载|下载|删除|删掉|移除)/i.test(text))
+                .slice(0, 6);
+            const chats = (Array.isArray(rawPlan?.chats) ? rawPlan.chats : []).slice(0, 4).map(chat => ({
+                contactName: findPhoneSimText(chat?.contactName || chat?.contact, '', 40),
+                messages: (Array.isArray(chat?.messages) ? chat.messages : []).slice(0, 12).map(message => ({
+                    role: String(message?.role || '').toLowerCase() === 'user' ? 'user' : 'char',
+                    content: findPhoneSimText(message?.content, '', 500)
+                })).filter(message => message.content)
+            })).filter(chat => chat.contactName && chat.messages.length);
+            const moments = (Array.isArray(rawPlan?.moments) ? rawPlan.moments : []).slice(0, 3).map(moment => ({
+                content: findPhoneSimText(moment?.content, '', 500),
+                images: (Array.isArray(moment?.images) ? moment.images : []).slice(0, 9)
+                    .map(image => findPhoneSimText(image, '', 160)).filter(Boolean),
+                likes: (Array.isArray(moment?.likes) ? moment.likes : []).slice(0, 20)
+                    .map(name => findPhoneSimText(name, '', 40)).filter(Boolean),
+                comments: (Array.isArray(moment?.comments) ? moment.comments : []).slice(0, 20)
+                    .map(comment => ({
+                        name: findPhoneSimText(comment?.name, '', 40),
+                        content: findPhoneSimText(comment?.content, '', 180)
+                    })).filter(comment => comment.name && comment.content)
+            })).filter(moment => moment.content || moment.images.length);
+
+            const searches = (Array.isArray(rawPlan?.searches) ? rawPlan.searches : []).slice(0, 8).map(search => ({
+                keyword: findPhoneSimText(typeof search === 'string' ? search : search?.keyword, '', 80),
+                tag: findPhoneSimText(typeof search === 'object' ? search?.tag : '', '', 24),
+                time: findPhoneSimText(typeof search === 'object' ? search?.time : '', '刚刚', 24)
+            })).filter(search => search.keyword);
+
+            const installedByKey = new Map((Array.isArray(installedApps) ? installedApps : [])
+                .map(app => [getFindPhoneAppStateKey(app), app]));
+
+            const appActions = (Array.isArray(rawPlan?.appActions) ? rawPlan.appActions : []).slice(0, 5).map((action, index) => {
+                const type = String(action?.type || '').toLowerCase();
+                if (!allowedActionTypes.has(type)) return null;
+                let appName = findPhoneSimText(action?.appName || action?.app?.name, '', 24);
+                if (!appName || /^(wechat|微信|百度|baidu)$/i.test(appName)) return null;
+                const installedApp = installedByKey.get(getFindPhoneAppStateKey(appName));
+                if (type === 'install') {
+                    if (installedApp) return null;
+                } else {
+                    // 打开、更新和卸载只能作用于本次上下文中真实存在的桌面APP。
+                    if (!installedApp) return null;
+                    appName = installedApp.name;
+                }
+                const updates = (Array.isArray(action?.updates) ? action.updates : []).slice(0, 10).map(update => {
+                    const operation = String(update?.operation || 'append_items').toLowerCase();
+                    if (!allowedOperations.has(operation)) return null;
+                    const items = (Array.isArray(update?.items) ? update.items : (update?.item ? [update.item] : []))
+                        .slice(0, 16).map(item => normalizeAutonomousAppItem(item));
+                    if (!items.length) return null;
+                    return {
+                        operation,
+                        tabLabel: findPhoneSimText(update?.tabLabel || update?.tab, '动态', 12),
+                        sectionTitle: findPhoneSimText(update?.sectionTitle || update?.section, '最近活动', 40),
+                        sectionType: ['list', 'grid', 'stats'].includes(update?.sectionType) ? update.sectionType : 'list',
+                        matchTitle: findPhoneSimText(update?.matchTitle, items[0].title, 48),
+                        items
+                    };
+                }).filter(Boolean);
+                const app = type === 'install'
+                    ? normalizeAutonomousAppMeta({ ...(action?.app || {}), name: appName }, appName, index)
+                    : { ...installedApp };
+                let activity = findPhoneSimText(action?.activity || action?.summary, '', 180);
+                if (type === 'install') activity = `下载并安装了${appName}`;
+                else if (type === 'uninstall') activity = `卸载了${appName}`;
+                else if (/(?:安装|卸载|下载|删除|删掉|移除)/i.test(activity)) activity = `${type === 'update' ? '使用并更新了' : '打开了'}${appName}`;
+                return {
+                    type,
+                    appName,
+                    app,
+                    activity,
+                    updates,
+                    initialPlan: action?.initialPlan && typeof action.initialPlan === 'object'
+                        ? normalizeFindPhoneAppSimulation(action.initialPlan, app)
+                        : null
+                };
+            }).filter(Boolean);
+
+            return {
+                summary: findPhoneSimText(rawPlan?.summary, `${char?.nick || char?.name || '角色'}进行了一些自主活动`, 240),
+                offlineActivities,
+                chats,
+                moments,
+                searches,
+                appActions
+            };
+        }
+
+        function limitCharAutonomousPlanEvents(plan, maxEvents) {
+            const limit = Math.max(1, Math.min(6, Number(maxEvents) || 1));
+            const limited = {
+                ...plan,
+                offlineActivities: [],
+                chats: [],
+                moments: [],
+                searches: [],
+                appActions: []
+            };
+            const groups = [
+                ['offlineActivities', plan.offlineActivities || []],
+                ['appActions', plan.appActions || []],
+                ['chats', plan.chats || []],
+                ['moments', plan.moments || []],
+                ['searches', plan.searches || []]
+            ];
+            let used = 0;
+            let index = 0;
+            while (used < limit) {
+                let appended = false;
+                for (const [key, items] of groups) {
+                    if (used >= limit) break;
+                    if (index < items.length) {
+                        limited[key].push(items[index]);
+                        used++;
+                        appended = true;
+                    }
+                }
+                if (!appended) break;
+                index++;
+            }
+            return limited;
+        }
+
+        function mergeFindPhoneAppPlanUpdates(basePlan, app, action, activityTime = Date.now()) {
+            const clone = JSON.parse(JSON.stringify(basePlan || createFindPhoneFallbackAppSimulation(app)));
+            if (!Array.isArray(clone.tabs)) clone.tabs = [];
+
+            for (const update of action.updates || []) {
+                let tab = clone.tabs.find(entry => entry.label === update.tabLabel);
+                if (!tab) {
+                    if (clone.tabs.length >= 6) tab = clone.tabs[0];
+                    else {
+                        tab = { label: update.tabLabel, sections: [] };
+                        clone.tabs.push(tab);
+                    }
+                }
+                if (!Array.isArray(tab.sections)) tab.sections = [];
+                let section = tab.sections.find(entry => entry.title === update.sectionTitle);
+                if (!section) {
+                    if (tab.sections.length >= 8) section = tab.sections[tab.sections.length - 1];
+                    else {
+                        section = { title: update.sectionTitle, type: update.sectionType, items: [] };
+                        tab.sections.push(section);
+                    }
+                }
+                if (!Array.isArray(section.items)) section.items = [];
+                if (update.operation === 'upsert_item') {
+                    const targetIndex = section.items.findIndex(item => item.title === update.matchTitle);
+                    if (targetIndex >= 0) section.items[targetIndex] = { ...section.items[targetIndex], ...update.items[0] };
+                    else section.items.unshift(...update.items);
+                } else {
+                    section.items.unshift(...update.items);
+                }
+            }
+
+            if (action.activity) {
+                let activityTab = clone.tabs.find(tab => /动态|记录|首页/.test(tab.label));
+                if (!activityTab) {
+                    activityTab = clone.tabs.length < 6 ? { label: '动态', sections: [] } : clone.tabs[0];
+                    if (!clone.tabs.includes(activityTab)) clone.tabs.push(activityTab);
+                }
+                if (!Array.isArray(activityTab.sections)) activityTab.sections = [];
+                let activitySection = activityTab.sections.find(section => /最近活动|使用记录|动态/.test(section.title));
+                if (!activitySection) {
+                    activitySection = { title: '最近活动', type: 'list', items: [] };
+                    activityTab.sections.unshift(activitySection);
+                }
+                activitySection.items = Array.isArray(activitySection.items) ? activitySection.items : [];
+                activitySection.items.unshift(normalizeAutonomousAppItem({
+                    icon: app.glyph || '◷',
+                    title: action.activity,
+                    subtitle: new Date(activityTime).toLocaleString('zh-CN'),
+                    value: '刚刚',
+                    badge: '自主活动',
+                    detail: action.activity,
+                    actionLabel: '查看记录',
+                    actionResult: '已展示本次使用记录。'
+                }, action.activity));
+            }
+
+            return normalizeFindPhoneAppSimulation(clone, app);
+        }
+
+        async function refreshVisibleFindPhoneDesktopAfterAutonomy(role, desktopPlan, changedAppPlans) {
+            const roleMatches = findPhoneCurrentRole && String(findPhoneCurrentRole.id) === String(role.id);
+            if (!roleMatches) return;
+            try {
+                const atlas = typeof window.getDesktopImageAtlas === 'function' ? await window.getDesktopImageAtlas() : [];
+                applyFindPhoneDesktopPlan(normalizeFindPhoneDesktopPlan(desktopPlan, role, atlas), atlas, role);
+            } catch (error) {
+                applyFindPhoneDesktopPlan(normalizeFindPhoneDesktopPlan(desktopPlan, role, []), [], role);
+            }
+            if (findPhoneCurrentGeneratedApp) {
+                const key = getFindPhoneAppStateKey(findPhoneCurrentGeneratedApp);
+                const updated = changedAppPlans.get(key);
+                if (updated) {
+                    findPhoneCurrentAppPlan = updated.plan;
+                    findPhoneCurrentGeneratedApp = { ...findPhoneCurrentGeneratedApp, ...updated.app };
+                    renderFindPhoneAppSimulation(updated.plan, updated.app);
+                }
+            }
+        }
+
+        async function runCharAutonomousAction(charId, accountId, options = {}) {
+            const char = await db.characters.get(charId);
+            if (!char) return null;
+            const trigger = options.trigger === 'scheduled'
+                ? 'scheduled'
+                : (options.trigger === 'manual' ? 'manual' : 'chat');
+            if (trigger === 'scheduled' && !char.scheduled_activity_enabled) return null;
+            if ((trigger === 'chat' || trigger === 'manual') && !char.allow_autonomous_activity) return null;
+            if (autonomousActionExecutionLocks.has(charId)) return null;
+            autonomousActionExecutionLocks.add(charId);
+
+            try {
+
+            const configuredInterval = Math.max(1, Number(char.scheduled_activity_interval) || 30);
+            const activityWindowMinutes = trigger === 'scheduled'
+                ? Math.min(1440, configuredInterval)
+                : (trigger === 'manual' ? 120 : 60);
+            const maxPlanEvents = trigger === 'scheduled'
+                ? Math.max(1, Math.min(6, Math.floor(activityWindowMinutes / 8) + 1))
+                : (trigger === 'manual' ? 6 : 3);
+
+            const effectiveAccountId = String(accountId || getCurrentAccountId() || '');
+            const allChars = await db.characters.toArray();
+            const contactIds = char.phone_contacts_by_user?.[effectiveAccountId] || [];
+            const npcContacts = contactIds.map(id => allChars.find(item => item.id === id)).filter(item => item && item.type !== 'user');
+            const contextSnapshot = getCharAutonomousContextSnapshot(char);
+            const desktopPlan = contextSnapshot.desktopPlan;
+            const installedApps = contextSnapshot.installedApps;
+            const appStates = contextSnapshot.appStates;
+            const appContext = installedApps.map(app => summarizeFindPhoneAppStateForAutonomy(app, appStates[getFindPhoneAppStateKey(app)]));
+            const recentActivities = contextSnapshot.recentActivities;
+            const persona = [char.description, char.personality, char.identity?.signature, char.identity?.bio]
+                .filter(Boolean).map(value => String(value).trim()).join('\n').substring(0, 3500) || '暂无详细人设';
+            const activityHint = findPhoneSimText(options.activityHint, '', 300);
+            const appContextText = JSON.stringify(appContext).substring(0, 16000);
+            let memoryContext = '';
+            try {
+                memoryContext = await getSummaryMemoryContext('private', char.id, effectiveAccountId);
+                if (memoryContext.length > 12000) memoryContext = memoryContext.slice(-12000);
+            } catch (error) {
+                console.warn('[自主行动] 读取角色记忆失败:', error);
+            }
+
+            const prompt = `你正在驱动一个虚拟角色的自主生活。请根据人设、当前时间、近期活动和手机状态，决定角色这段时间真实自然地做了什么。
+
+触发方式：${trigger === 'scheduled' ? '定时自主行动' : (trigger === 'manual' ? '用户手动重新生成一轮自主行动' : '聊天过程中触发的自主行动')}
+角色：${char.nick || char.name || '角色'}
+角色人设：${persona}
+当前时间：${new Date().toLocaleString('zh-CN')}
+${activityHint ? `聊天中已经出现的行动意图：${activityHint}` : ''}
+
+角色记忆（已经发生的事实，行动必须与之连续且不能矛盾）：
+${memoryContext || '暂无长期记忆'}
+
+近期活动上下文（按时间从旧到新；避免无理由重复同一行动）：
+${recentActivities.length ? recentActivities.join('\n') : '暂无'}
+
+手机联系人：
+${npcContacts.length ? npcContacts.map(item => `- ${item.nick || item.name}：${findPhoneSimText(item.description, '朋友', 160)}`).join('\n') : '暂无手机联系人'}
+
+当前手机桌面真实可用APP：
+${contextSnapshot.availableAppsText}
+
+额外APP原有内容摘要：
+${appContextText || '暂无额外APP'}
+
+请生成一份结构化自主行动计划。角色可以进行线下生活、与手机好友聊天、发朋友圈、打开或使用现有APP、安装新APP、卸载APP，也可以什么手机操作都不做。
+本轮表示过去约${activityWindowMinutes}分钟内陆续发生的事情，不是当前这一分钟同时发生的事情。所有数组合计最多${maxPlanEvents}个事件，事件之间要有合理先后关系。
+
+重要规则：
+1. offlineActivities记录角色在线下做了什么，每条是能直接显示在角色头像“活动”页的自然中文。
+2. chats只能选择手机联系人；role=char表示角色本人，role=user表示NPC好友。
+3. searches记录角色本次真实新增的百度搜索；微信聊天和朋友圈分别写入chats、moments。WeChat和百度不要放入appActions。
+4. open、update、uninstall的appName必须从“当前手机桌面真实可用APP”的额外APP中逐字复制，禁止使用别名、简称或编造不存在的APP。
+5. 对已有APP只能增量追加或更新统计，绝不能要求覆盖、清空或删除原有记录。
+6. 游戏APP可向“战绩/最近对局”追加比赛，并用upsert_item更新段位、总场次、胜率或常用英雄；音乐APP可追加播放记录；其他APP按真实用途更新。
+7. open表示打开或使用；update表示产生新数据；install表示下载新APP；uninstall表示卸载APP。
+8. install只能用于桌面当前不存在的新APP，必须提供app图标资料和initialPlan；uninstall只能用于当前确实存在的额外APP。
+9. 安装、下载、卸载只能写在成功对应的appActions.activity里，禁止写进offlineActivities或summary，避免产生只有文字没有实际操作的假活动。
+10. 所有类型合计最多${maxPlanEvents}个事件，单次行动保持自然，不要每次都安装或卸载APP。
+11. 只返回JSON，不要Markdown、HTML或脚本。
+
+返回JSON格式：
+{
+  "summary":"本次自主行动总述",
+  "offlineActivities":["去便利店买了晚饭","回家后打了两局游戏"],
+  "chats":[{"contactName":"联系人名字","messages":[{"role":"char","content":"消息"},{"role":"user","content":"回复"}]}],
+  "moments":[{"content":"朋友圈内容","images":["图片描述"],"likes":[],"comments":[]}],
+  "searches":[{"keyword":"百度搜索关键词","tag":"可选分类","time":"刚刚"}],
+  "appActions":[{
+    "type":"open|update|install|uninstall",
+    "appName":"APP名称",
+    "activity":"角色在这个APP里做了什么",
+    "app":{"name":"APP名称","purpose":"用途","glyph":"图标","color":"#RRGGBB","secondaryColor":"#RRGGBB","foreground":"#RRGGBB"},
+    "updates":[{
+      "operation":"append_items|upsert_item",
+      "tabLabel":"战绩",
+      "sectionTitle":"最近对局",
+      "sectionType":"list|grid|stats",
+      "matchTitle":"upsert时用于匹配旧项目标题",
+      "items":[{"icon":"胜","title":"排位赛 · 胜利","subtitle":"英雄和战绩","value":"+22","badge":"MVP","detail":"详细数据","actionLabel":"查看详情","actionResult":"已打开详情"}]
+    }],
+    "initialPlan":{"appName":"新APP","subtitle":"副标题","heroText":"说明","theme":{"primary":"#RRGGBB","accent":"#RRGGBB","background":"#RRGGBB"},"tabs":[{"label":"首页","sections":[{"title":"内容","type":"list","items":[{"icon":"•","title":"项目","subtitle":"说明","value":"","badge":"","detail":"详情","actionLabel":"查看","actionResult":"已打开"}]}]}]}
+  }]
+}`;
+
+            const result = await callAI([
+                { role: 'system', content: prompt },
+                { role: 'user', content: '请生成这一次自主行动计划，只返回JSON。' }
+            ], { max_tokens: 4500 });
+            const jsonMatch = String(result || '').match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error('自主行动接口未返回有效JSON');
+            const plan = limitCharAutonomousPlanEvents(
+                normalizeCharAutonomousPlan(JSON.parse(jsonMatch[0]), char, installedApps),
+                maxPlanEvents
+            );
+
+            const freshChar = await db.characters.get(charId);
+            if (!freshChar) return plan;
+            const updatePayload = {};
+            const now = Date.now();
+            const plannedEventCount = Math.max(1,
+                plan.offlineActivities.length + plan.chats.length + plan.moments.length +
+                plan.searches.length + plan.appActions.length
+            );
+            const windowStart = now - activityWindowMinutes * 60 * 1000;
+            const eventStep = (now - windowStart) / (plannedEventCount + 1);
+            let timelineCursor = 0;
+            const nextEventTime = () => {
+                timelineCursor++;
+                const rawTime = windowStart + eventStep * timelineCursor;
+                const seconds = (timelineCursor * 17) % 50;
+                return Math.min(now, Math.floor(rawTime / 60000) * 60000 + seconds * 1000);
+            };
+            const batchId = `autonomous_${charId}_${now}`;
+            const activityEvents = [];
+            const addActivity = (text, time = nextEventTime()) => {
+                const safeText = findPhoneSimText(text, '', 240);
+                if (safeText && !activityEvents.some(item => item.text === safeText)) {
+                    activityEvents.push({ text: safeText, time });
+                }
+            };
+            plan.offlineActivities.forEach(text => addActivity(text));
+
+            if (!freshChar.chat_history_by_user) freshChar.chat_history_by_user = {};
+            for (const chat of plan.chats) {
+                const contact = npcContacts.find(item => {
+                    const names = [item.name, item.nick].filter(Boolean).map(name => getFindPhoneAppStateKey(String(name)));
+                    return names.includes(getFindPhoneAppStateKey(chat.contactName));
+                });
+                if (!contact) continue;
+                const eventTime = nextEventTime();
+                const key = `fp_npc_${contact.id}`;
+                const history = [...(freshChar.chat_history_by_user[key] || [])];
+                chat.messages.forEach((message, index) => history.push({
+                    role: message.role,
+                    content: message.content,
+                    time: Math.min(now, eventTime + index * 30000)
+                }));
+                updatePayload[`chat_history_by_user.${key}`] = history;
+                addActivity(`在手机上和${contact.nick || contact.name}聊了几句`, eventTime);
+            }
+
+            if (plan.moments.length && effectiveAccountId) {
+                const existingMoments = [...(freshChar.fp_moments_by_user?.[effectiveAccountId] || [])];
+                plan.moments.forEach(moment => {
+                    const eventTime = nextEventTime();
+                    existingMoments.push({
+                        author: freshChar.nick || freshChar.name || '角色',
+                        content: moment.content,
+                        images: moment.images.map(image => image.startsWith('[') ? image : `[${image}]`),
+                        likes: moment.likes,
+                        comments: moment.comments,
+                        time: eventTime
+                    });
+                    addActivity('发布了一条朋友圈', eventTime);
+                });
+                existingMoments.sort((a, b) => (b.time || 0) - (a.time || 0));
+                updatePayload[`fp_moments_by_user.${effectiveAccountId}`] = existingMoments;
+            }
+
+            if (plan.searches.length) {
+                const existingSearches = [...(Array.isArray(freshChar.generated_baidu_search) ? freshChar.generated_baidu_search : [])];
+                plan.searches.forEach(search => {
+                    const eventTime = nextEventTime();
+                    existingSearches.unshift({
+                        keyword: search.keyword,
+                        tag: search.tag,
+                        time: new Date(eventTime).toLocaleString('zh-CN', {
+                            month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                        }),
+                        createdAt: eventTime
+                    });
+                    addActivity(`在百度搜索了“${search.keyword}”`, eventTime);
+                });
+                updatePayload.generated_baidu_search = existingSearches.slice(0, 100);
+            }
+
+            const states = { ...(freshChar.fp_generated_app_states || {}) };
+            const changedAppPlans = new Map();
+            let nextDesktopPlan = JSON.parse(JSON.stringify(desktopPlan));
+            if (!Array.isArray(nextDesktopPlan.apps)) nextDesktopPlan.apps = [];
+            if (!Array.isArray(nextDesktopPlan.uninstalledApps)) nextDesktopPlan.uninstalledApps = [];
+            let desktopChanged = false;
+
+            for (const action of plan.appActions) {
+                const actionTime = nextEventTime();
+                const key = getFindPhoneAppStateKey(action.appName);
+                const installedIndex = nextDesktopPlan.apps.findIndex(app => getFindPhoneAppStateKey(app) === key);
+                const previousState = states[key] || null;
+
+                if (action.type === 'uninstall') {
+                    if (installedIndex < 0) continue;
+                    const [removedApp] = nextDesktopPlan.apps.splice(installedIndex, 1);
+                    if (!nextDesktopPlan.uninstalledApps.includes(key)) nextDesktopPlan.uninstalledApps.push(key);
+                    states[key] = {
+                        ...(previousState || {}), app: previousState?.app || removedApp,
+                        installed: false, updatedAt: actionTime
+                    };
+                    updatePayload[`fp_generated_app_states.${key}`] = states[key];
+                    desktopChanged = true;
+                    addActivity(action.activity || `卸载了${removedApp.name}`, actionTime);
+                    continue;
+                }
+
+                let app = installedIndex >= 0 ? nextDesktopPlan.apps[installedIndex] : action.app;
+                if (action.type === 'install' && installedIndex < 0) {
+                    if (nextDesktopPlan.apps.length >= 16) continue;
+                    app = action.app;
+                    nextDesktopPlan.apps.push(app);
+                    nextDesktopPlan.uninstalledApps = nextDesktopPlan.uninstalledApps.filter(name => name !== key);
+                    desktopChanged = true;
+                    addActivity(action.activity || `下载了${app.name}`, actionTime);
+                } else if (installedIndex < 0) {
+                    continue;
+                } else {
+                    addActivity(action.activity || `打开了${app.name}`, actionTime);
+                }
+
+                const basePlan = previousState?.plan || action.initialPlan || createFindPhoneFallbackAppSimulation(app);
+                const mergedPlan = mergeFindPhoneAppPlanUpdates(basePlan, app, action, actionTime);
+                states[key] = {
+                    ...(previousState || {}),
+                    app: { ...(previousState?.app || {}), ...app },
+                    plan: mergedPlan,
+                    installed: true,
+                    createdAt: previousState?.createdAt || actionTime,
+                    updatedAt: actionTime,
+                    lastOpenedAt: action.type === 'open' || action.type === 'update' ? actionTime : previousState?.lastOpenedAt
+                };
+                updatePayload[`fp_generated_app_states.${key}`] = states[key];
+                changedAppPlans.set(key, { app: states[key].app, plan: mergedPlan });
+                findPhoneGeneratedAppCache.set(getFindPhoneGeneratedAppCacheKeyForRole(freshChar, app), mergedPlan);
+            }
+
+            // 角色开始使用手机后，确保本次输入给AI的桌面快照成为后续“查手机”的真实桌面。
+            if (desktopChanged || !contextSnapshot.storedDesktopPlan) saveFindPhoneDesktopPlan(freshChar, nextDesktopPlan);
+
+            if (!activityEvents.length && !/(?:安装|卸载|下载|删除|删掉|移除)/i.test(plan.summary)) addActivity(plan.summary);
+            const activityLogs = [...(Array.isArray(freshChar.activity_logs) ? freshChar.activity_logs : [])];
+            activityEvents.forEach(item => activityLogs.push({
+                text: item.text,
+                time: item.time,
+                type: 'autonomous',
+                source: trigger,
+                batchId
+            }));
+            activityLogs.sort((a, b) => (a.time || 0) - (b.time || 0));
+            updatePayload.activity_logs = activityLogs.slice(-200);
+
+            if (Object.keys(updatePayload).length) {
+                await safeDexieUpdate(db.characters, charId, updatePayload, `统一自主行动[${freshChar.name}]`);
+            }
+            if (desktopChanged || changedAppPlans.size) {
+                await refreshVisibleFindPhoneDesktopAfterAutonomy(freshChar, nextDesktopPlan, changedAppPlans);
+            }
+            console.log('[自主行动] ✅ 已执行:', plan);
+            return plan;
+            } finally {
+                autonomousActionExecutionLocks.delete(charId);
+            }
+        }
+
+        async function generateCharAutonomousActivity(charId, accountId, activityDesc) {
+            return runCharAutonomousAction(charId, accountId, {
+                trigger: 'chat',
+                activityHint: activityDesc
+            });
+        }
+
+        const manualAutonomousActivityLocks = new Set();
+
+        async function manualRegenerateAutonomousActivity() {
+            const charId = currentChatCharId;
+            if (!charId) {
+                showToast('请先打开一个角色聊天');
+                return;
+            }
+            if (!document.getElementById('detail-allow-autonomous-switch')?.checked) {
+                showToast('请先开启“允许角色自主活动”');
+                return;
+            }
+            if (manualAutonomousActivityLocks.has(charId) || scheduledActivityLocks.has(charId)) {
+                showToast('这一轮自主行动正在生成，请稍候');
+                return;
+            }
+
+            const row = document.getElementById('detail-regenerate-autonomous');
+            const title = document.getElementById('detail-regenerate-autonomous-title');
+            manualAutonomousActivityLocks.add(charId);
+            if (row) {
+                row.style.pointerEvents = 'none';
+                row.style.opacity = '0.55';
+            }
+            if (title) title.textContent = '正在重新生成…';
+            showToast('正在按最新上下文生成一轮自主行动…');
+
+            try {
+                // 先保存面板上尚未落库的开关与间隔，保证本轮读取的是最新设置。
+                await saveChatDetail();
+                const freshChar = await db.characters.get(charId);
+                if (!freshChar?.allow_autonomous_activity) throw new Error('自主活动尚未开启');
+                const result = await runCharAutonomousAction(charId, getCurrentAccountId(), { trigger: 'manual' });
+                if (!result) throw new Error('另一轮自主行动正在执行，请稍后重试');
+                if (freshChar.scheduled_activity_enabled) lastScheduledActivityTime.set(charId, Date.now());
+                showToast('自主行动已重新生成，时间已分散记录');
+            } catch (error) {
+                console.error('[ManualAutonomousActivity] 重新生成失败:', error);
+                showToast(`重新生成失败：${error.message || '请稍后重试'}`);
+            } finally {
+                manualAutonomousActivityLocks.delete(charId);
+                if (row) {
+                    row.style.pointerEvents = '';
+                    row.style.opacity = '';
+                }
+                if (title) title.textContent = '重新生成一轮自主行动';
+            }
+        }
+
+        window.manualRegenerateAutonomousActivity = manualRegenerateAutonomousActivity;
+
         // ===== 查手机WeChat - 聊天详情（直接复用真实chat-window，通过 _fpChatMode 标记控制） =====
         
         // 打开聊天详情 - 直接复用真实 chat-window，设置 fp 模式标记
@@ -10084,6 +12064,9 @@ ${(() => {
         
         // ✅ 清理末尾的 [DONE] / [done]
         replyText = replyText.replace(/\s*\[DONE\]\s*$/i, '').trim();
+
+        // 记录角色输出过的内联指令（用于头像弹窗“活动”页签）
+        await logInlineCommandsFromText(targetChar.id, replyText);
         
         // 🎯 检测解除拉黑指令 ((UNBLOCK_USER))
         if (/\(\(UNBLOCK_USER\)\)/i.test(replyText)) {
@@ -10157,12 +12140,29 @@ ${(() => {
         if (/\(\(BLOCK_MOMENTS\)\)/i.test(replyText)) {
             console.log('[acceptMessageReply] 检测到朋友圈屏蔽指令');
             replyText = replyText.replace(/\(\(BLOCK_MOMENTS\)\)/gi, '').trim();
-            try { await executeBlockMoments(targetChar.id, accountId, true); } catch (e) { console.error('[acceptMessageReply] 朋友圈屏蔽失败:', e); }
+            try {
+                await executeBlockMoments(targetChar.id, accountId, true);
+                await logCharacterActivity(targetChar.id, '设置了不让你看TA朋友圈');
+            } catch (e) { console.error('[acceptMessageReply] 朋友圈屏蔽失败:', e); }
         }
         if (/\(\(UNBLOCK_MOMENTS\)\)/i.test(replyText)) {
             console.log('[acceptMessageReply] 检测到朋友圈解除屏蔽指令');
             replyText = replyText.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
-            try { await executeBlockMoments(targetChar.id, accountId, false); } catch (e) { console.error('[acceptMessageReply] 朋友圈解除屏蔽失败:', e); }
+            try {
+                await executeBlockMoments(targetChar.id, accountId, false);
+                await logCharacterActivity(targetChar.id, '恢复了让你看TA朋友圈');
+            } catch (e) { console.error('[acceptMessageReply] 朋友圈解除屏蔽失败:', e); }
+        }
+        if (/\(\(CHECK_MOMENTS_PERMISSION\)\)/i.test(replyText)) {
+            console.log('[acceptMessageReply] 检测到朋友圈权限查询指令');
+            replyText = replyText.replace(/\(\(CHECK_MOMENTS_PERMISSION\)\)/gi, '').trim();
+            try {
+                const freshCharForQuery = await db.characters.get(targetChar.id);
+                if (freshCharForQuery) await setCharMomentsPermissionQueryRequested(freshCharForQuery, accountId, true);
+                await logCharacterActivity(targetChar.id, '打开了你的朋友圈');
+            } catch (e) {
+                console.error('[acceptMessageReply] 设置朋友圈权限查询标记失败:', e);
+            }
         }
         
         // 🎯 检测修改密码指令 ((CHANGE_PASSWORD:新密码))
@@ -10334,18 +12334,22 @@ ${(() => {
                     try {
                         const smsUserName = smsUserChar ? smsUserChar.name : (myChar.nick || myChar.name);
                         const fpMemoryContent = `${smsUserName}偷偷拿了${targetChar.name}的手机，做了以下事情：${_fpNpcLinesForMemorySms.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${targetChar.name}已经发现并做出了反应。`;
-                        await db.chat_summaries.add({
+                        await addChatSummaryWithDerivedIndex({
                             accountId: accountId,
                             chatType: 'private',
                             chatId: String(targetChar.id),
                             time: Date.now(),
+                            createdAt: Date.now(),
                             content: fpMemoryContent,
                             messageCount: 0,
                             timeRange: '',
                             keywords: ['查手机', '冒充', '手机被动'],
                             startTime: Date.now(),
-                            endTime: Date.now()
-                        });
+                            endTime: Date.now(),
+                            sourceType: 'event',
+                            memoryScopeId: await resolveSummaryMemoryScope('private', targetChar.id, accountId),
+                            sourceMessageIds: []
+                        }, { structured: false });
                         console.log('[acceptMessageReply] ✅ 查手机事件已写入长期记忆');
                     } catch (memErr) {
                         console.warn('[acceptMessageReply] 写入查手机长期记忆失败:', memErr);
@@ -10422,8 +12426,7 @@ ${(() => {
                 { name: 'QQ音乐', subtitle: '听我想听的歌', icon: 'https://img.icons8.com/color/96/music.png', rating: 4.6, downloads: '3亿+', appId: 'qq-music' }
             ],
             updates: [
-                { name: '微信', subtitle: '版本 8.0.50 更新', icon: 'https://img.icons8.com/color/96/wechat.png', rating: 4.9, downloads: '已安装', appId: 'wechat' },
-                { name: 'QQ', subtitle: '版本 9.0.20 更新', icon: 'https://img.icons8.com/color/96/qq.png', rating: 4.7, downloads: '已安装', appId: 'qq' }
+                { name: '微信', subtitle: '版本 8.0.50 更新', icon: 'https://img.icons8.com/color/96/wechat.png', rating: 4.9, downloads: '已安装', appId: 'wechat' }
             ]
         };
 
@@ -10611,6 +12614,7 @@ async function showWechatRegisterPage() {
 
         function hideWechatPage() {
             const page = document.getElementById('wechat-page');
+            hideScreenShareCallPage();
             page.style.transform = 'scale(0.95)';
             page.style.opacity = '0';
             setTimeout(() => {
@@ -12175,6 +14179,24 @@ ${loreContext}
             await db.characters.update(char.id, { moments_blocked_by_user: { ...char.moments_blocked_by_user } });
         }
 
+        // 获取角色是否请求过“查询朋友圈权限”（按账号隔离）
+        function getCharMomentsPermissionQueryRequested(char, accountId) {
+            if (accountId && char.moments_permission_query_requested_by_user?.[accountId] !== undefined) {
+                return !!char.moments_permission_query_requested_by_user[accountId];
+            }
+            return false;
+        }
+
+        // 设置角色“查询朋友圈权限”请求状态（按账号隔离）
+        async function setCharMomentsPermissionQueryRequested(char, accountId, requested) {
+            if (!accountId) return;
+            if (!char.moments_permission_query_requested_by_user) char.moments_permission_query_requested_by_user = {};
+            char.moments_permission_query_requested_by_user[accountId] = !!requested;
+            await db.characters.update(char.id, {
+                moments_permission_query_requested_by_user: { ...char.moments_permission_query_requested_by_user }
+            });
+        }
+
         // 获取角色显示名（按账号隔离）：备注 > 微信昵称 > 网名 > 原名
         function getCharDisplayName(char, accountId) {
             const remark = getCharRemark(char, accountId);
@@ -12200,8 +14222,64 @@ ${loreContext}
             return perUserStatus || 'stranger';
         }
 
+        function getRelationshipHistoryArchiveKey(char, accountId) {
+            if (!char?.id || !accountId) return null;
+            const bucketId = resolveWorldMemoryBucket(char, accountId);
+            return `relationship_history_archive:${accountId}:${char.id}:${bucketId}`;
+        }
+
+        async function archiveHistoryBeforeRelationshipChange(char, accountId, status) {
+            if (!accountId || !['deleted', 'blocked', 'deleted_by_char', 'blocked_by_char'].includes(status)) return;
+            const archiveKey = getRelationshipHistoryArchiveKey(char, accountId);
+            const history = getChatHistory(char, accountId);
+            if (!archiveKey || !Array.isArray(history) || history.length === 0) return;
+
+            await db.dexiData.put({
+                key: archiveKey,
+                value: {
+                    charId: char.id,
+                    accountId: String(accountId),
+                    bucketId: resolveWorldMemoryBucket(char, accountId),
+                    history: history.map(message => ({ ...message })),
+                    savedAt: Date.now(),
+                    reason: status
+                }
+            });
+        }
+
+        async function restoreRelationshipHistoryIfNeeded(char, accountId) {
+            if (!char?.id || !accountId) return 0;
+            const freshChar = await db.characters.get(char.id);
+            if (!freshChar) return 0;
+
+            const bucketId = resolveWorldMemoryBucket(freshChar, accountId);
+            const currentHistory = freshChar.chat_history_by_user?.[bucketId] || [];
+            if (currentHistory.length > 0) return 0;
+
+            const archiveKey = getRelationshipHistoryArchiveKey(freshChar, accountId);
+            const archiveRecord = archiveKey ? await db.dexiData.get(archiveKey) : null;
+            const archivedHistory = archiveRecord?.value?.history;
+            if (!Array.isArray(archivedHistory) || archivedHistory.length === 0) return 0;
+
+            const historyByUser = { ...(freshChar.chat_history_by_user || {}) };
+            historyByUser[bucketId] = archivedHistory.map(message => ({ ...message }));
+            await db.characters.update(freshChar.id, { chat_history_by_user: historyByUser });
+
+            if (!char.chat_history_by_user) char.chat_history_by_user = {};
+            char.chat_history_by_user[bucketId] = historyByUser[bucketId];
+            console.log(`[RelationshipHistory] 已恢复 ${freshChar.name || freshChar.id} 的 ${archivedHistory.length} 条聊天记录`);
+            return archivedHistory.length;
+        }
+
         // 设置角色的好友状态（按账号隔离）
         async function setFriendStatus(char, accountId, status) {
+            // 好友关系变化与聊天历史是两套数据。删除/拉黑前先留存当前会话安全副本。
+            try {
+                await archiveHistoryBeforeRelationshipChange(char, accountId, status);
+            } catch (archiveError) {
+                console.warn('[setFriendStatus] 保存关系变更前聊天副本失败:', archiveError);
+            }
+
             // 🛡️ 使用 update() 只更新好友状态字段，防止覆盖设置等其他数据
             const updatePayload = {};
             if (!accountId) {
@@ -12212,9 +14290,28 @@ ${loreContext}
                 if (!char.wechat_status_by_user) char.wechat_status_by_user = {};
                 char.wechat_status_by_user[accountId] = status;
                 updatePayload.wechat_status_by_user = { ...char.wechat_status_by_user };
+
+                // 重新成为好友时只恢复会话可见性，绝不初始化或清空聊天历史。
+                if (status === 'friend') {
+                    const hiddenByUser = { ...(char.chat_hidden_by_user || {}) };
+                    hiddenByUser[accountId] = false;
+                    char.chat_hidden_by_user = hiddenByUser;
+                    updatePayload.chat_hidden_by_user = hiddenByUser;
+                }
             }
             try {
                 await db.characters.update(char.id, updatePayload);
+
+                if (status === 'friend') {
+                    try {
+                        const restoredCount = await restoreRelationshipHistoryIfNeeded(char, accountId);
+                        if (restoredCount > 0) {
+                            try { showToast(`已恢复与${char.name || '该好友'}的${restoredCount}条聊天记录`); } catch (_) {}
+                        }
+                    } catch (restoreError) {
+                        console.warn('[setFriendStatus] 恢复关系变更前聊天副本失败:', restoreError);
+                    }
+                }
             } catch (err) {
                 console.error('[setFriendStatus] ❌ 好友状态保存失败:', err);
                 // 回退到 put() 确保数据不丢
@@ -12222,13 +14319,178 @@ ${loreContext}
             }
         }
 
-        // 获取角色的聊天记录（按账号隔离）
+        function buildLegacyWorldMemoryBucket(char, ownerId, linkedIds) {
+            const participantSet = new Set([
+                String(ownerId),
+                ...(Array.isArray(linkedIds) ? linkedIds.map(String) : [])
+            ]);
+            const sorted = Array.from(participantSet).filter(Boolean).sort();
+            return `world:${getCharSharedProfileId(char)}:${sorted.join('|')}`;
+        }
+
+        function isMemoryCompatibilityV2Enabled() {
+            return localStorage.getItem('memory_v2_enabled') !== 'false';
+        }
+
+        function hashChatHistoryForManifest(history) {
+            let hash = 2166136261;
+            for (const message of (Array.isArray(history) ? history : [])) {
+                const text = getChatMessageCursorFingerprint(message);
+                for (let index = 0; index < text.length; index++) {
+                    hash ^= text.charCodeAt(index);
+                    hash = Math.imul(hash, 16777619);
+                }
+            }
+            return (hash >>> 0).toString(16).padStart(8, '0');
+        }
+
+        // 首次启用兼容层时保存一份只读清单，便于核对升级前后的数量与顺序。
+        async function captureMemoryCompatibilityManifest() {
+            const manifestKey = 'memory_compat_manifest_v2';
+            if (await db.dexiData.get(manifestKey)) return;
+
+            const [characters, summaries, offlineChats] = await Promise.all([
+                db.characters.toArray(),
+                db.chat_summaries.toArray(),
+                db.offline_chats.toArray()
+            ]);
+            const characterThreads = [];
+            for (const char of characters) {
+                if (Array.isArray(char.chat_history) && char.chat_history.length > 0) {
+                    characterThreads.push({
+                        charId: char.id,
+                        bucketId: '__legacy__',
+                        messageCount: char.chat_history.length,
+                        fingerprint: hashChatHistoryForManifest(char.chat_history)
+                    });
+                }
+                for (const [bucketId, history] of Object.entries(char.chat_history_by_user || {})) {
+                    characterThreads.push({
+                        charId: char.id,
+                        bucketId,
+                        messageCount: Array.isArray(history) ? history.length : 0,
+                        fingerprint: hashChatHistoryForManifest(history)
+                    });
+                }
+            }
+
+            await db.dexiData.put({
+                key: manifestKey,
+                value: {
+                    version: 2,
+                    capturedAt: Date.now(),
+                    characterCount: characters.length,
+                    summaryCount: summaries.length,
+                    offlineThreadCount: offlineChats.length,
+                    characterThreads
+                }
+            });
+            console.log(`[MemoryCompat] 已保存升级前清单：${characterThreads.length} 个聊天桶，${summaries.length} 条总结`);
+        }
+
+        // 非破坏性初始化：把当前正在使用的旧版 world:* 键固定下来。
+        // 不移动、不合并、不删除任何聊天数组；其他历史 world:* 键只记录为可恢复候选。
+        async function migrateStableWorldMemoryBuckets() {
+            const allChars = await db.characters.toArray();
+            let stabilizedCount = 0;
+
+            for (const char of allChars) {
+                const linked = Array.isArray(char.linked_world_user_ids) ? char.linked_world_user_ids.map(String) : [];
+                const ownerId = char.linked_world_owner_id ? String(char.linked_world_owner_id) : null;
+                if (!linked.length || !ownerId || char.shared_memory_bucket_key) continue;
+
+                const activeLegacyKey = buildLegacyWorldMemoryBucket(char, ownerId, linked);
+                const worldPrefix = `world:${getCharSharedProfileId(char)}:`;
+                const historicalKeys = Object.keys(char.chat_history_by_user || {})
+                    .filter(key => key.startsWith(worldPrefix));
+                if (!historicalKeys.includes(activeLegacyKey)) historicalKeys.push(activeLegacyKey);
+
+                await db.characters.update(char.id, {
+                    shared_memory_bucket_key: activeLegacyKey,
+                    legacy_world_memory_buckets: historicalKeys,
+                    memory_compat_version: 2
+                });
+                stabilizedCount++;
+            }
+
+            if (stabilizedCount > 0) {
+                console.log(`[MemoryCompat] ✅ 已固定 ${stabilizedCount} 个共享记忆桶，未移动任何聊天记录`);
+            }
+        }
+
+        async function validateMemoryCompatibilityManifest() {
+            const manifestRecord = await db.dexiData.get('memory_compat_manifest_v2');
+            const manifest = manifestRecord?.value;
+            if (!manifest || manifest.validatedAt) return;
+
+            const [characters, summaries] = await Promise.all([
+                db.characters.toArray(),
+                db.chat_summaries.toArray()
+            ]);
+            const currentThreads = new Map();
+            for (const char of characters) {
+                if (Array.isArray(char.chat_history) && char.chat_history.length > 0) {
+                    currentThreads.set(`${char.id}::__legacy__`, {
+                        messageCount: char.chat_history.length,
+                        fingerprint: hashChatHistoryForManifest(char.chat_history)
+                    });
+                }
+                for (const [bucketId, history] of Object.entries(char.chat_history_by_user || {})) {
+                    currentThreads.set(`${char.id}::${bucketId}`, {
+                        messageCount: Array.isArray(history) ? history.length : 0,
+                        fingerprint: hashChatHistoryForManifest(history)
+                    });
+                }
+            }
+
+            const mismatches = [];
+            for (const oldThread of (manifest.characterThreads || [])) {
+                const current = currentThreads.get(`${oldThread.charId}::${oldThread.bucketId}`);
+                if (!current ||
+                    current.messageCount !== oldThread.messageCount ||
+                    current.fingerprint !== oldThread.fingerprint) {
+                    mismatches.push(`${oldThread.charId}::${oldThread.bucketId}`);
+                }
+            }
+            if (summaries.length !== manifest.summaryCount) mismatches.push('chat_summaries');
+
+            if (mismatches.length > 0) {
+                console.error('[MemoryCompat] ❌ 升级校验不一致，已停止启用兼容层:', mismatches);
+                localStorage.setItem('memory_v2_enabled', 'false');
+                throw new Error(`记忆兼容升级校验失败：${mismatches.slice(0, 5).join(', ')}`);
+            }
+
+            manifest.validatedAt = Date.now();
+            await db.dexiData.put({ key: 'memory_compat_manifest_v2', value: manifest });
+            console.log('[MemoryCompat] ✅ 升级前后聊天与总结校验一致');
+        }
+
+        // 计算私聊记忆桶：支持“关联另一个User账号”后共享同一角色记忆
+        function resolveWorldMemoryBucket(char, accountId) {
+            if (!char || !accountId) return accountId;
+            const aid = String(accountId);
+            const linked = Array.isArray(char.linked_world_user_ids) ? char.linked_world_user_ids.map(String) : [];
+            const ownerId = char.linked_world_owner_id ? String(char.linked_world_owner_id) : null;
+            if (!linked.length || !ownerId) return aid;
+
+            const participantSet = new Set([ownerId, ...linked]);
+            if (!participantSet.has(aid)) return aid;
+
+            // V2 固定桶不随关联成员增减而改变；没有元数据时保持旧算法兼容。
+            if (isMemoryCompatibilityV2Enabled() && char.shared_memory_bucket_key) {
+                return String(char.shared_memory_bucket_key);
+            }
+            return buildLegacyWorldMemoryBucket(char, ownerId, linked);
+        }
+
+        // 获取角色的聊天记录（按账号隔离；若关联世界账号则走共享记忆桶）
         // 🔧 性能优化：直接返回原数组引用，不再每次拷贝（拷贝大数组开销很大）
         function getChatHistory(char, accountId) {
             if (!accountId) {
                 return char.chat_history || [];
             }
-            return char.chat_history_by_user?.[accountId] || [];
+            const bucketId = resolveWorldMemoryBucket(char, accountId);
+            return char.chat_history_by_user?.[bucketId] || [];
         }
 
         // 当前私聊窗口对应的会话 key（与 renderChatBody 里传入 getChatHistory 的 accountId 一致）
@@ -12271,7 +14533,26 @@ ${loreContext}
         // 设置角色的聊天记录（按账号隔离）
         // 🔧 修复数据丢失：始终从DB读取最新角色数据再保存，避免用旧 char 对象覆盖并发写入的新数据
         // 🛡️ 增强：带重试 + 错误提醒 + 脏数据标记，防止静默丢数据
+        const _chatHistoryWriteQueues = new Map();
+
         async function setChatHistory(char, accountId, history, options = {}) {
+            const bucketId = accountId ? resolveWorldMemoryBucket(char, accountId) : '__legacy__';
+            const queueKey = `${char.id}::${bucketId}`;
+            const previous = _chatHistoryWriteQueues.get(queueKey) || Promise.resolve();
+            const current = previous
+                .catch(() => {})
+                .then(() => _setChatHistoryUnlocked(char, accountId, history, options));
+            _chatHistoryWriteQueues.set(queueKey, current);
+            try {
+                return await current;
+            } finally {
+                if (_chatHistoryWriteQueues.get(queueKey) === current) {
+                    _chatHistoryWriteQueues.delete(queueKey);
+                }
+            }
+        }
+
+        async function _setChatHistoryUnlocked(char, accountId, history, options = {}) {
             // ✅ 如果用户正在查看这个聊天，自动标记新消息为已读
             if (currentChatCharId === char.id) {
                 history.forEach(m => {
@@ -12281,8 +14562,11 @@ ${loreContext}
                 });
             }
             
-            // 🛡️ 先标记为脏数据，即使后续写入失败，定时器也能兜底保存
-            markChatDirty(char.id, char, accountId, history);
+            const targetBucketId = accountId ? resolveWorldMemoryBucket(char, accountId) : null;
+
+            // 🛡️ 先标记为脏数据，即使后续写入失败，定时器也能兜底保存。
+            // 以实际桶为键，避免同一角色的不同账号/共享世界互相覆盖兜底快照。
+            const dirtySaveKey = markChatDirty(char.id, char, accountId, history, targetBucketId);
             
             // 🛡️ 使用 update() 只更新聊天记录字段，防止覆盖其他设置（如聊天详细里的所有设置）
             const updatePayload = {};
@@ -12307,34 +14591,23 @@ ${loreContext}
                     return;
                 }
                 
-                // 🔧 防竞态：如果DB中的历史比传入的更长，说明有并发写入（如AI正在保存回复）
-                // 此时用DB的历史作为基础，将传入history中的新消息追加上去，避免覆盖丢失
-                // ⚠️ 删除操作必须跳过此检查，否则删除的消息会被DB版本恢复
-                const dbHistory = freshChatHistoryByUser[accountId] || [];
-                if (!options.isDelete && dbHistory.length > 0 && history.length > 0 && dbHistory.length > history.length) {
-                    // DB有更多消息 → 传入的history可能是用旧数据push了新消息
-                    // 策略：取DB的完整历史 + 传入history中比DB多出来的新消息（末尾部分）
-                    const lastDbMsg = dbHistory[dbHistory.length - 1];
-                    const lastPassedMsg = history[history.length - 1];
-                    // 如果传入的最后一条消息不在DB中（通过time和content判断），追加它
-                    const isNewMsg = !lastDbMsg || lastPassedMsg.time !== lastDbMsg.time || lastPassedMsg.content !== lastDbMsg.content;
-                    if (isNewMsg) {
-                        console.warn(`[setChatHistory] ⚠️ 检测到竞态：DB有${dbHistory.length}条，传入${history.length}条，合并追加新消息`);
-                        dbHistory.push(lastPassedMsg);
-                        freshChatHistoryByUser[accountId] = dbHistory;
-                        // 同步更新传入的history引用（让调用方也看到最新的）
-                        history = dbHistory;
-                    } else {
-                        freshChatHistoryByUser[accountId] = dbHistory; // 保留DB的更长版本
-                    }
+                // 只有显式 isDelete 才允许清空；普通流程即使误传空数组，也必须保留数据库已有历史。
+                const dbHistory = freshChatHistoryByUser[targetBucketId] || [];
+                if (options.isDelete) {
+                    freshChatHistoryByUser[targetBucketId] = history;
                 } else {
-                    freshChatHistoryByUser[accountId] = history;
+                    const mergedHistory = mergeChatHistoriesSafely(dbHistory, history);
+                    if (mergedHistory.length !== history.length || dbHistory.length !== history.length) {
+                        console.warn(`[setChatHistory] ⚠️ 已合并并发历史：DB ${dbHistory.length}条，传入 ${history.length}条，结果 ${mergedHistory.length}条`);
+                    }
+                    freshChatHistoryByUser[targetBucketId] = mergedHistory;
+                    history = mergedHistory;
                 }
                 updatePayload.chat_history_by_user = freshChatHistoryByUser;
                 
                 // 同步更新调用方的引用
                 if (!char.chat_history_by_user) char.chat_history_by_user = {};
-                char.chat_history_by_user[accountId] = freshChatHistoryByUser[accountId];
+                char.chat_history_by_user[targetBucketId] = freshChatHistoryByUser[targetBucketId];
             }
             
             // ✅ 如果有新消息（非空历史），自动清除聊天列表隐藏标记
@@ -12354,7 +14627,7 @@ ${loreContext}
                 const updated = await db.characters.update(char.id, updatePayload);
                 if (updated) {
                     // 写入成功，清除脏标记
-                    _pendingDirtySaves.delete(char.id);
+                    _pendingDirtySaves.delete(dirtySaveKey);
                 } else {
                     console.warn('[setChatHistory] ⚠️ update返回0，角色可能不存在:', char.id);
                 }
@@ -12930,7 +15203,7 @@ ${loreContext}
                     const accountId = getCurrentAccountId();
                     
                     // 清空聊天记录
-                    await setChatHistory(char, accountId, []);
+                    await setChatHistory(char, accountId, [], { isDelete: true });
                     
                     // 将好友状态改为已删除（从通讯录和聊天列表中移除）
                     await setFriendStatus(char, accountId, 'deleted');
@@ -13067,6 +15340,525 @@ ${loreContext}
             }
         }
 
+        const screenCallState = {
+            running: false,
+            micOn: false,
+            hasTriggered: false,
+            isSpeaking: false,
+            silenceTimer: null,
+            lastFrameBase64: '',
+            lastFrameSavedAt: 0,
+            lastRenderAt: 0,
+            renderMinInterval: 120,
+            speakingThreshold: 0.028,
+            stream: null,
+            audioContext: null,
+            analyser: null,
+            dataArray: null,
+            volumeEma: 0,
+            rafId: null,
+            pendingAiRequest: false,
+            lastAudioSnapshot: null,
+            targetCharId: null,
+            targetCharName: '',
+            webScreenStream: null,
+            webScreenVideo: null,
+            webFrameTimer: null
+        };
+
+        function updateScreenCallStatus(text) {
+            const statusEl = document.getElementById('screen-call-status');
+            if (statusEl) statusEl.textContent = text;
+        }
+
+        function updateScreenCallReply(text) {
+            const replyEl = document.getElementById('screen-call-reply');
+            if (replyEl) replyEl.textContent = text || 'AI回复为空';
+        }
+
+        function postToNativeScreenBridge(action, payload = {}) {
+            try {
+                const handlers = window.webkit?.messageHandlers;
+                if (handlers?.screenShareBridge?.postMessage) {
+                    handlers.screenShareBridge.postMessage({ action, ...payload });
+                    return true;
+                }
+                if (handlers?.screenShare?.postMessage) {
+                    handlers.screenShare.postMessage({ action, ...payload });
+                    return true;
+                }
+            } catch (err) {
+                console.warn('[ScreenCall] 调用原生桥接失败:', err);
+            }
+            return false;
+        }
+
+        function drawScreenFrame(base64Frame) {
+            const canvas = document.getElementById('screen-call-canvas');
+            if (!canvas) return;
+            const now = Date.now();
+            if (now - screenCallState.lastRenderAt < screenCallState.renderMinInterval) return;
+            screenCallState.lastRenderAt = now;
+
+            const img = new Image();
+            img.onload = () => {
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                const cw = canvas.width;
+                const ch = canvas.height;
+                const scale = Math.max(cw / img.width, ch / img.height);
+                const sw = img.width * scale;
+                const sh = img.height * scale;
+                const sx = (cw - sw) / 2;
+                const sy = (ch - sh) / 2;
+                ctx.clearRect(0, 0, cw, ch);
+                ctx.drawImage(img, sx, sy, sw, sh);
+            };
+            img.src = `data:image/jpeg;base64,${base64Frame}`;
+        }
+
+        function stopWebScreenFallback() {
+            if (screenCallState.webFrameTimer) {
+                clearInterval(screenCallState.webFrameTimer);
+                screenCallState.webFrameTimer = null;
+            }
+            if (screenCallState.webScreenVideo) {
+                try {
+                    screenCallState.webScreenVideo.pause();
+                } catch (e) {}
+                screenCallState.webScreenVideo.srcObject = null;
+            }
+            if (screenCallState.webScreenStream) {
+                screenCallState.webScreenStream.getTracks().forEach(track => track.stop());
+            }
+            screenCallState.webScreenStream = null;
+            screenCallState.webScreenVideo = null;
+        }
+
+        async function startWebScreenFallback() {
+            if (!navigator.mediaDevices?.getDisplayMedia) {
+                updateScreenCallStatus('当前环境不支持网页屏幕共享');
+                return false;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { frameRate: { ideal: 8, max: 10 } },
+                    audio: false
+                });
+                const video = document.createElement('video');
+                video.autoplay = true;
+                video.muted = true;
+                video.playsInline = true;
+                video.srcObject = stream;
+                await video.play();
+
+                screenCallState.webScreenStream = stream;
+                screenCallState.webScreenVideo = video;
+                updateScreenCallStatus('已开启网页屏幕共享');
+
+                const fpsInterval = 1000 / 8;
+                screenCallState.webFrameTimer = setInterval(() => {
+                    if (!screenCallState.running || !screenCallState.webScreenVideo) return;
+                    const v = screenCallState.webScreenVideo;
+                    if (!v.videoWidth || !v.videoHeight) return;
+                    const canvas = document.getElementById('screen-call-canvas') || document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return;
+                    if (!canvas.width) canvas.width = 540;
+                    if (!canvas.height) canvas.height = 960;
+                    const cw = canvas.width;
+                    const ch = canvas.height;
+                    const scale = Math.max(cw / v.videoWidth, ch / v.videoHeight);
+                    const sw = v.videoWidth * scale;
+                    const sh = v.videoHeight * scale;
+                    const sx = (cw - sw) / 2;
+                    const sy = (ch - sh) / 2;
+                    ctx.clearRect(0, 0, cw, ch);
+                    ctx.drawImage(v, sx, sy, sw, sh);
+
+                    const now = Date.now();
+                    if (isScreenShareVideoMode && now - screenCallState.lastRenderAt >= screenCallState.renderMinInterval) {
+                        screenCallState.lastRenderAt = now;
+                        const bgDiv = document.getElementById('video-call-bg');
+                        if (bgDiv) {
+                            try {
+                                const previewData = canvas.toDataURL('image/jpeg', 0.6);
+                                bgDiv.style.backgroundImage = `url(${previewData})`;
+                            } catch (e) {}
+                        }
+                    }
+                    if (now - screenCallState.lastFrameSavedAt >= 500) {
+                        screenCallState.lastFrameSavedAt = now;
+                        try {
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+                            screenCallState.lastFrameBase64 = dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+                        } catch (e) {
+                            console.warn('[ScreenCall] 导出帧失败:', e);
+                        }
+                    }
+                }, fpsInterval);
+
+                const [videoTrack] = stream.getVideoTracks();
+                if (videoTrack) {
+                    videoTrack.onended = () => {
+                        stopWebScreenFallback();
+                        updateScreenCallStatus('屏幕共享已停止');
+                    };
+                }
+                return true;
+            } catch (err) {
+                console.warn('[ScreenCall] 网页屏幕共享失败:', err);
+                updateScreenCallStatus('未开启屏幕共享权限');
+                return false;
+            }
+        }
+
+        function resetScreenCallSession() {
+            screenCallState.hasTriggered = false;
+            screenCallState.pendingAiRequest = false;
+        }
+
+        function normalizeScreenCallApiBase(url) {
+            if (!url) return '';
+            const trimmed = String(url).trim();
+            if (!trimmed) return '';
+            let normalized = trimmed;
+            if (/^wss?:\/\//i.test(normalized)) {
+                normalized = normalized.replace(/^ws:\/\//i, 'http://').replace(/^wss:\/\//i, 'https://');
+            }
+            return normalized.replace(/\/+$/, '');
+        }
+
+        function getScreenCallAnalyzeCandidates() {
+            const candidates = [];
+            const pushCandidate = (base) => {
+                const normalized = normalizeScreenCallApiBase(base);
+                if (!normalized) return;
+                const full = `${normalized}/ai/analyze`;
+                if (!candidates.includes(full)) candidates.push(full);
+                try {
+                    const u = new URL(normalized);
+                    const originOnly = `${u.origin}/ai/analyze`;
+                    if (!candidates.includes(originOnly)) candidates.push(originOnly);
+                } catch (e) {}
+            };
+
+            pushCandidate(localStorage.getItem('online_api_base_url'));
+            const inputServerUrl = document.getElementById('online-server-url')?.value?.trim();
+            const savedServerUrl = localStorage.getItem('online_server_url');
+            pushCandidate(inputServerUrl || savedServerUrl || '');
+
+            if (!candidates.includes('/ai/analyze')) candidates.push('/ai/analyze');
+            return candidates;
+        }
+
+        async function callScreenCallMainAI() {
+            const frameData = screenCallState.lastFrameBase64 || '';
+            const audioMeta = screenCallState.lastAudioSnapshot;
+            const targetName = screenCallState.targetCharName || '当前聊天角色';
+
+            const userText =
+                `你正在进行屏幕共享通话辅助分析。\n` +
+                `目标角色：${targetName}\n` +
+                `音频状态：${audioMeta ? `音量=${Number(audioMeta.volume || 0).toFixed(4)}, 时间=${new Date(audioMeta.at || Date.now()).toLocaleString()}` : '无'}\n` +
+                `请基于画面与语音状态，输出一段简短、自然、可直接展示给用户的回复（1-3句）。`;
+
+            const contentParts = [{ type: 'text', text: userText }];
+            if (frameData) {
+                contentParts.push({
+                    type: 'image_url',
+                    image_url: { url: `data:image/jpeg;base64,${frameData}` }
+                });
+            }
+
+            const messages = [
+                {
+                    role: 'system',
+                    content: '你是视频通话中的屏幕共享分析助手。回答要简短、自然、可执行，不要输出多余格式。'
+                },
+                {
+                    role: 'user',
+                    content: contentParts
+                }
+            ];
+
+            // 直接复用现有主 API 调用链（设置页中的 URL/Key/Model/温度）
+            return await callAI(messages);
+        }
+
+        async function callScreenCallAPI() {
+            if (screenCallState.pendingAiRequest) return;
+            screenCallState.pendingAiRequest = true;
+            updateScreenCallStatus('分析中...');
+            try {
+                // 1) 优先走主 API（用户在设置里已配置）
+                try {
+                    const aiText = await callScreenCallMainAI();
+                    updateScreenCallReply(aiText || '主 API 返回为空');
+                    updateScreenCallStatus('分析完成（主API）');
+                    return;
+                } catch (mainErr) {
+                    console.warn('[ScreenCall] 主API调用失败，回退 /ai/analyze:', mainErr);
+                }
+
+                // 2) 回退到后端 /ai/analyze（兼容旧方案）
+                const payload = JSON.stringify({
+                    screen: screenCallState.lastFrameBase64 || '',
+                    audio: screenCallState.lastAudioSnapshot,
+                    targetCharId: screenCallState.targetCharId,
+                    targetCharName: screenCallState.targetCharName
+                });
+                const candidates = getScreenCallAnalyzeCandidates();
+                let response = null;
+                let usedUrl = '';
+                let lastErr = null;
+                for (const apiUrl of candidates) {
+                    try {
+                        usedUrl = apiUrl;
+                        response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: payload
+                        });
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        break;
+                    } catch (e) {
+                        response = null;
+                        lastErr = e;
+                    }
+                }
+                if (!response) {
+                    throw new Error(`全部地址请求失败: ${candidates.join(' | ')}; ${lastErr?.message || 'unknown'}`);
+                }
+                const data = await response.json();
+                updateScreenCallReply(data?.text || '未返回文本结果');
+                updateScreenCallStatus(`分析完成 (${usedUrl})`);
+            } catch (err) {
+                console.error('[ScreenCall] API调用失败:', err);
+                updateScreenCallStatus('分析失败');
+                updateScreenCallReply(`请求失败：${err.message || err}\n请检查后端是否可访问且已部署 /ai/analyze。`);
+            } finally {
+                screenCallState.pendingAiRequest = false;
+            }
+        }
+
+        function triggerScreenCallOnce() {
+            if (screenCallState.hasTriggered) return;
+            screenCallState.hasTriggered = true;
+            callScreenCallAPI();
+        }
+
+        function handleScreenCallVolume(volume) {
+            screenCallState.lastAudioSnapshot = {
+                volume,
+                at: Date.now()
+            };
+            if (volume > screenCallState.speakingThreshold) {
+                if (!screenCallState.isSpeaking) {
+                    resetScreenCallSession();
+                }
+                screenCallState.isSpeaking = true;
+                if (screenCallState.silenceTimer) {
+                    clearTimeout(screenCallState.silenceTimer);
+                    screenCallState.silenceTimer = null;
+                }
+                updateScreenCallStatus('检测到说话中...');
+            } else if (screenCallState.isSpeaking && !screenCallState.silenceTimer) {
+                screenCallState.silenceTimer = setTimeout(() => {
+                    screenCallState.isSpeaking = false;
+                    screenCallState.silenceTimer = null;
+                    updateScreenCallStatus('说话结束，准备分析...');
+                    triggerScreenCallOnce();
+                }, 1500);
+            }
+        }
+
+        function monitorScreenCallVoice() {
+            if (!screenCallState.analyser || !screenCallState.dataArray) return;
+            screenCallState.analyser.getFloatTimeDomainData(screenCallState.dataArray);
+            let sum = 0;
+            for (let i = 0; i < screenCallState.dataArray.length; i++) {
+                const v = screenCallState.dataArray[i];
+                sum += v * v;
+            }
+            const rms = Math.sqrt(sum / screenCallState.dataArray.length);
+            screenCallState.volumeEma = screenCallState.volumeEma * 0.7 + rms * 0.3;
+            handleScreenCallVolume(screenCallState.volumeEma);
+            screenCallState.rafId = requestAnimationFrame(monitorScreenCallVoice);
+        }
+
+        async function startScreenCallMic() {
+            if (screenCallState.micOn) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                const analyser = audioContext.createAnalyser();
+                analyser.fftSize = 1024;
+                source.connect(analyser);
+
+                screenCallState.stream = stream;
+                screenCallState.audioContext = audioContext;
+                screenCallState.analyser = analyser;
+                screenCallState.dataArray = new Float32Array(analyser.fftSize);
+                screenCallState.micOn = true;
+                screenCallState.volumeEma = 0;
+                monitorScreenCallVoice();
+                updateScreenCallStatus('麦克风已开启');
+            } catch (err) {
+                console.error('[ScreenCall] 麦克风开启失败:', err);
+                showToast('麦克风开启失败');
+            }
+        }
+
+        function stopScreenCallMic() {
+            if (screenCallState.rafId) {
+                cancelAnimationFrame(screenCallState.rafId);
+                screenCallState.rafId = null;
+            }
+            if (screenCallState.silenceTimer) {
+                clearTimeout(screenCallState.silenceTimer);
+                screenCallState.silenceTimer = null;
+            }
+            if (screenCallState.stream) {
+                screenCallState.stream.getTracks().forEach(track => track.stop());
+            }
+            if (screenCallState.audioContext) {
+                screenCallState.audioContext.close().catch(() => {});
+            }
+            screenCallState.stream = null;
+            screenCallState.audioContext = null;
+            screenCallState.analyser = null;
+            screenCallState.dataArray = null;
+            screenCallState.micOn = false;
+            screenCallState.isSpeaking = false;
+        }
+
+        async function toggleScreenCallMic() {
+            const micBtn = document.getElementById('screen-call-mic-btn');
+            if (!screenCallState.micOn) {
+                await startScreenCallMic();
+            } else {
+                stopScreenCallMic();
+                updateScreenCallStatus('麦克风已关闭');
+            }
+            if (!micBtn) return;
+            micBtn.classList.toggle('muted', !screenCallState.micOn);
+            micBtn.textContent = screenCallState.micOn ? '🎤 麦克风已开' : '🎤 开启麦克风';
+        }
+
+        async function showScreenShareCallPage(targetCharId = null) {
+            const page = document.getElementById('screen-call-page');
+            const menu = document.getElementById('wechat-menu');
+            if (!page) return;
+            if (menu) menu.style.display = 'none';
+
+            page.style.display = 'flex';
+            screenCallState.running = true;
+            screenCallState.targetCharId = targetCharId || null;
+            screenCallState.targetCharName = '';
+            resetScreenCallSession();
+            updateScreenCallReply('AI回复会显示在这里');
+            updateScreenCallStatus('正在启动屏幕共享...');
+
+            if (screenCallState.targetCharId) {
+                try {
+                    const targetChar = await db.characters.get(screenCallState.targetCharId);
+                    if (targetChar) {
+                        screenCallState.targetCharName = targetChar.name || '';
+                        updateScreenCallStatus(`已选择角色：${screenCallState.targetCharName}，正在启动屏幕共享...`);
+                    }
+                } catch (err) {
+                    console.warn('[ScreenCall] 读取目标角色失败:', err);
+                }
+            }
+
+            const started = postToNativeScreenBridge('startCapture', { fps: 8 });
+            if (!started) {
+                updateScreenCallStatus('未检测到原生桥接，正在请求网页屏幕共享权限...');
+                startWebScreenFallback();
+            }
+        }
+
+        function showScreenShareCallFromChatMenu() {
+            const actionPanel = document.getElementById('action-panel');
+            if (actionPanel) actionPanel.style.display = 'none';
+            if (!currentChatCharId) {
+                showToast('请先进入与角色的聊天窗口');
+                return;
+            }
+            startScreenShareVideoCallForCurrentChar();
+        }
+
+        async function startScreenShareVideoCallForCurrentChar() {
+            if (!currentChatCharId) return;
+            if (isInVideoCall()) {
+                showToast('你正在通话中，请先结束当前通话');
+                return;
+            }
+            const char = await db.characters.get(currentChatCharId);
+            if (!char) {
+                showToast('未找到当前角色');
+                return;
+            }
+
+            isScreenShareVideoMode = true;
+            videoCallCharId = currentChatCharId;
+            screenCallState.running = true;
+            screenCallState.targetCharId = currentChatCharId;
+            screenCallState.targetCharName = char.name || '';
+            resetScreenCallSession();
+
+            await showVideoCallPage(char, `${char.name || '角色'}已进入屏幕共享通话，你可以说话或输入文字。`, null);
+            const status = document.getElementById('video-call-status');
+            if (status) {
+                status.innerHTML = '<span style="width:6px;height:6px;border-radius:50%;background-color:#4ade80;animation:blink 1.5s infinite;"></span>屏幕共享中';
+            }
+            const msgInput = document.getElementById('video-msg-input');
+            if (msgInput) msgInput.placeholder = '说话会先转文字，再发送...';
+            // 自动开启语音转文字（点击一次模式，不需要长按）
+            toggleVideoSpeechToText();
+
+            const started = postToNativeScreenBridge('startCapture', { fps: 8 });
+            if (!started) {
+                startWebScreenFallback();
+            }
+        }
+
+        function hideScreenShareCallPage() {
+            const page = document.getElementById('screen-call-page');
+            if (page) page.style.display = 'none';
+            stopScreenCallMic();
+            stopWebScreenFallback();
+            postToNativeScreenBridge('stopCapture');
+            screenCallState.running = false;
+            screenCallState.lastFrameBase64 = '';
+            screenCallState.lastRenderAt = 0;
+            screenCallState.lastFrameSavedAt = 0;
+            screenCallState.targetCharId = null;
+            screenCallState.targetCharName = '';
+            resetScreenCallSession();
+        }
+
+        // 原生层通过 evaluateJavaScript("window.onFrame('...')") 回传帧
+        window.onFrame = function(base64Frame) {
+            if (!screenCallState.running || !base64Frame) return;
+            const now = Date.now();
+            if (isScreenShareVideoMode) {
+                const bgDiv = document.getElementById('video-call-bg');
+                if (bgDiv && now - screenCallState.lastRenderAt >= screenCallState.renderMinInterval) {
+                    screenCallState.lastRenderAt = now;
+                    bgDiv.style.backgroundImage = `url(data:image/jpeg;base64,${base64Frame})`;
+                }
+            } else {
+                drawScreenFrame(base64Frame);
+            }
+            if (now - screenCallState.lastFrameSavedAt >= 500) {
+                screenCallState.lastFrameSavedAt = now;
+                screenCallState.lastFrameBase64 = base64Frame;
+            }
+        };
+
         function closeModal(id) {
             document.getElementById(id).style.display = 'none';
             
@@ -13083,6 +15875,108 @@ ${loreContext}
         // 当前心声相关变量
         let currentThoughtsCharId = null;
         let currentThoughtsMessageIndex = null;
+        let currentThoughtsTab = 'thoughts';
+
+        // 记录角色活动
+        async function logCharacterActivity(charId, text) {
+            if (!charId || !text) return;
+            try {
+                const char = await db.characters.get(charId);
+                if (!char) return;
+                const activityLogs = Array.isArray(char.activity_logs) ? [...char.activity_logs] : [];
+                activityLogs.push({ text: String(text), time: Date.now() });
+                await safeDexieUpdate(db.characters, charId, {
+                    activity_logs: activityLogs.slice(-200)
+                }, `记录角色活动[${char.name}]`);
+            } catch (e) {
+                console.error('[ActivityLog] 记录活动失败:', e);
+            }
+        }
+
+        function switchThoughtsTab(tab) {
+            const thoughtsTab = document.getElementById('thoughts-tab-thoughts');
+            const activitiesTab = document.getElementById('thoughts-tab-activities');
+            const thoughtsPane = document.getElementById('thoughts-pane-thoughts');
+            const activitiesPane = document.getElementById('thoughts-pane-activities');
+            if (!thoughtsTab || !activitiesTab || !thoughtsPane || !activitiesPane) return;
+
+            currentThoughtsTab = tab === 'activities' ? 'activities' : 'thoughts';
+            const isThoughts = currentThoughtsTab === 'thoughts';
+            thoughtsTab.classList.toggle('active', isThoughts);
+            activitiesTab.classList.toggle('active', !isThoughts);
+            thoughtsPane.style.display = isThoughts ? 'block' : 'none';
+            activitiesPane.style.display = isThoughts ? 'none' : 'block';
+        }
+
+        async function renderCharacterActivities(char) {
+            const listEl = document.getElementById('thoughts-activity-list');
+            if (!listEl) return;
+            const logs = Array.isArray(char?.activity_logs) ? [...char.activity_logs].reverse() : [];
+            if (logs.length === 0) {
+                listEl.innerHTML = '<div style="padding:18px 6px; color:#999; font-size:13px; text-align:center;">暂无活动</div>';
+                return;
+            }
+            listEl.innerHTML = '';
+            logs.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'thoughts-activity-item';
+                const text = document.createElement('div');
+                text.className = 'thoughts-activity-text';
+                text.textContent = item.text || '';
+                const time = document.createElement('div');
+                time.className = 'thoughts-activity-time';
+                time.textContent = new Date(item.time || Date.now()).toLocaleString('zh-CN', {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+                row.appendChild(text);
+                row.appendChild(time);
+                listEl.appendChild(row);
+            });
+        }
+
+        function describeActivityFromCommand(cmdRaw) {
+            const cmd = String(cmdRaw || '').trim();
+            const upper = cmd.toUpperCase();
+
+            if (/^\(\(CHECK_MOMENTS_PERMISSION\)\)$/.test(upper)) return '打开了你的朋友圈';
+            if (/^\(\(BLOCK_MOMENTS\)\)$/.test(upper)) return '设置了不让你看TA朋友圈';
+            if (/^\(\(UNBLOCK_MOMENTS\)\)$/.test(upper)) return '恢复了让你看TA朋友圈';
+            if (/^\(\(OPEN_MOMENTS\)\)$/.test(upper)) return '打开了你的朋友圈';
+            if (/^\(\(DELETE_USER\)\)$/.test(upper)) return '把你删好友了';
+            if (/^\(\(BLOCK_USER\)\)$/.test(upper)) return '把你拉黑了';
+            if (/^\(\(UNBLOCK_USER\)\)$/.test(upper)) return '把你从黑名单移出来了';
+            if (/^\(\(CALL\)\)$/.test(upper)) return '给你发起了语音通话';
+            if (/^\(\(CHANGE_AVATAR\)\)$/.test(upper)) return '更换了头像';
+            if (/^\(\(COUPLE_AVATAR\)\)$/.test(upper)) return '向你发起了情头邀请';
+            if (/^\(\(REVERT_COUPLE_AVATAR\)\)$/.test(upper)) return '换回了单人头像';
+            if (/^\(\(SET_NICKNAME:\s*.+\)\)$/i.test(cmd)) return '修改了网名';
+            if (/^\(\(SET_SIGNATURE:\s*.+\)\)$/i.test(cmd)) return '修改了个性签名';
+            if (/^\(\(NPC_ADD_FRIEND:\s*.+\)\)$/i.test(cmd)) return '让身边的人尝试加你好友';
+            if (/^\(\(QUOTE:\s*.+\)\)$/i.test(cmd)) return null; // 引用属于表达方式，不记活动
+            if (/^\(\(PHONE_ACTIVITY:\s*.+\)\)$/i.test(cmd)) return null; // 由自主行动执行器在真实落库后记录
+            if (/^\(\(USE_IMAGE_AS_PHONE_(?:CHAT_BACKGROUND|WALLPAPER)(?::\s*\d+)?\)\)$/i.test(cmd)) return null; // 成功设置后再记录
+            if (/^\(\(EMEI_ORDER:\s*.+\)\)$/i.test(cmd)) return '给你点了外卖';
+            if (/^\(\(EMEI_PAY:\s*.+\)\)$/i.test(cmd)) return '向你发起了代付请求';
+            if (/^\(\(EMEI_SHARE:\s*.+\)\)$/i.test(cmd)) return '和你分享了外卖';
+            if (/^\(\(TRANSFER:\s*.+\)\)$/i.test(cmd)) return '给你发起了转账';
+            if (/^\(\(RECALL\)\)$/i.test(cmd)) return '撤回了一条消息';
+
+            return '进行了一项互动操作';
+        }
+
+        async function logInlineCommandsFromText(charId, text) {
+            if (!charId || !text) return;
+            try {
+                const matches = String(text).match(/\(\([\s\S]*?\)\)/g) || [];
+                for (const cmd of matches) {
+                    const desc = describeActivityFromCommand(cmd);
+                    if (!desc) continue;
+                    await logCharacterActivity(charId, desc);
+                }
+            } catch (e) {
+                console.error('[ActivityLog] 记录活动失败:', e);
+            }
+        }
 
         // 显示角色心声
         async function showCharacterThoughts(charId, messageIndex) {
@@ -13103,11 +15997,17 @@ ${loreContext}
             const arrow = document.getElementById('thoughts-arrow');
             
             title.textContent = `TA的心声`;
+
+            // 默认展示“心声”页签
+            switchThoughtsTab('thoughts');
             
             // 重置历史区域状态
             historySection.style.display = 'none';
             arrow.classList.remove('expanded');
             historyContent.innerHTML = '';
+
+            // 渲染活动日志
+            await renderCharacterActivities(char);
             
             // 获取心声
             const currentDeleteBtn = document.getElementById('thoughts-current-delete');
@@ -13510,8 +16410,8 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
             if(char) {
                 const accountId = getCurrentAccountId();
                 await setFriendStatus(char, accountId, 'friend');
-                // 新账号添加好友时，强制使用全新空白记录，确保账号间数据完全隔离
-                await setChatHistory(char, accountId, []);
+                // 当前账号没有历史时 getChatHistory 本来就会返回空数组；
+                // 重新添加已有好友时绝不能用空数组覆盖该账号原来的聊天记录。
                 closeModal('direct-add-modal');
                 alert(`已将 ${char.name} 添加到通讯录`);
                 
@@ -14492,7 +17392,7 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
                 const summaries = await db.chat_summaries.where('accountId').equals(accountId).toArray();
                 const toDelete = summaries.filter(s => s.chatType === 'group' && String(s.chatId) === String(window.currentGroupChatId));
                 for (const s of toDelete) {
-                    await db.chat_summaries.delete(s.id);
+                    await deleteChatSummaryWithDerivedIndex(s.id);
                 }
                 if (toDelete.length > 0) console.log(`[clearGroupChatHistory] ✅ 已清除 ${toDelete.length} 条群聊总结`);
             } catch (e) {
@@ -14918,6 +17818,12 @@ User(${userChar.name}) 向你发送了好友申请，附言：“${reason || '�
             let fpRoleChar = null;
             if (isFpGroup && fpGroupRoleId) {
                 fpRoleChar = await db.characters.get(fpGroupRoleId);
+            }
+
+            // 查手机里的群聊同样属于角色自己的微信界面，沿用角色选择的聊天背景。
+            // 普通群聊不读取该字段，确保用户侧界面完全不受影响。
+            if (isFpGroup && fpRoleChar) {
+                applyChatBackground(fpRoleChar);
             }
             
             // 获取我的群昵称（fp模式下使用角色的名字）
@@ -18319,6 +21225,9 @@ ${chatContext || '（没有聊天记录）'}
                 document.getElementById('detail-char-avatar').style.backgroundImage = '';
             }
 
+            // 1.5 回显“关联另一个User账号”
+            updateLinkedWorldUsersDisplay();
+
             // 2. 加载世界书列表（多选）——只显示单人世界书，全局世界书自动生效
             const lorebooks = await db.lorebooks.toArray();
             const lbList = document.getElementById('detail-lorebook-list');
@@ -18387,6 +21296,9 @@ ${chatContext || '（没有聊天记录）'}
             
             // 4.5. 回显修罗场模式设置
             document.getElementById('detail-allow-shura-switch').checked = !!char.allow_shura_mode;
+            
+            // 4.55. 回显“屏蔽角色查看我朋友圈”设置（按账号隔离）
+            document.getElementById('detail-block-moments-switch').checked = !!getCharMomentsBlocked(char, _detailAid);
             
             // 4.6. 回显自主换头像设置
             document.getElementById('detail-allow-avatar-switch').checked = !!char.allow_auto_avatar;
@@ -18581,6 +21493,9 @@ async function saveChatDetail() {
     // 修罗场模式设置
     const allowShuraEnabled = document.getElementById('detail-allow-shura-switch').checked;
     
+    // 屏蔽角色查看朋友圈设置（按账号隔离）
+    const blockMomentsEnabled = document.getElementById('detail-block-moments-switch').checked;
+    
     // 自主换头像设置
     const allowAutoAvatar = document.getElementById('detail-allow-avatar-switch').checked;
     
@@ -18625,8 +21540,17 @@ async function saveChatDetail() {
         remarkUpdate.remark_by_user = existingRemarkByUser;
     }
 
+    // 构建朋友圈屏蔽字段（按账号隔离）
+    const momentsBlockedUpdate = {};
+    if (accountId) {
+        const existingMomentsBlockedByUser = char.moments_blocked_by_user || {};
+        existingMomentsBlockedByUser[accountId] = !!blockMomentsEnabled;
+        momentsBlockedUpdate.moments_blocked_by_user = existingMomentsBlockedByUser;
+    }
+
     const updatePayload = {
         ...remarkUpdate,
+        ...momentsBlockedUpdate,
         lorebookIds: lorebookIds.length > 0 ? lorebookIds : null,
         lorebookId: lorebookIds.length > 0 ? lorebookIds[0] : null,
         auto_reply_enabled: autoEnabled,
@@ -18932,11 +21856,146 @@ async function updateMountedUserDisplay() {
     }
 }
 
+function getCharSharedProfileId(char) {
+    if (!char) return null;
+    return char.shared_profile_id || `char_${char.id}`;
+}
+
+async function updateLinkedWorldUsersDisplay() {
+    if (!currentChatCharId) return;
+    const char = await db.characters.get(currentChatCharId);
+    const displayEl = document.getElementById('detail-linked-world-users');
+    if (!char || !displayEl) return;
+
+    const linkedIds = Array.isArray(char.linked_world_user_ids) ? char.linked_world_user_ids : [];
+    if (!linkedIds.length) {
+        displayEl.innerText = '未关联';
+        displayEl.style.color = '#999';
+        return;
+    }
+
+    const users = await db.characters.where('type').equals('user').toArray();
+    const nameMap = new Map(users.map(u => [String(u.id), u.name]));
+    const names = linkedIds.map(id => nameMap.get(String(id)) || `#${id}`);
+    displayEl.innerText = names.join('、');
+    displayEl.style.color = 'var(--ins-pink)';
+}
+
+async function showLinkWorldUserModal() {
+    if (!currentChatCharId) return;
+
+    const char = await db.characters.get(currentChatCharId);
+    if (!char) return;
+
+    const modal = document.getElementById('link-world-user-modal');
+    const listContainer = document.getElementById('link-world-user-list');
+    if (!modal || !listContainer) return;
+
+    const currentAccountId = String(getCurrentAccountId() || '');
+    const selectedIds = new Set((Array.isArray(char.linked_world_user_ids) ? char.linked_world_user_ids : []).map(String));
+    const users = await db.characters.where('type').equals('user').toArray();
+    const selectableUsers = users.filter(u => String(u.id) !== currentAccountId);
+
+    if (!selectableUsers.length) {
+        listContainer.innerHTML = '<div style="text-align:center; color:#999; padding:32px 8px;">没有可关联的其他User账号</div>';
+    } else {
+        listContainer.innerHTML = selectableUsers.map(user => {
+            const isSelected = selectedIds.has(String(user.id));
+            const avatarStyle = user.avatar ? `background-image:url(${user.avatar}); background-size:cover; background-position:center;` : 'background:#f0f0f0;';
+            return `
+                <div onclick="toggleLinkWorldUser(${user.id})" style="display:flex; align-items:center; padding:12px; background:${isSelected ? '#ffe4e8' : '#fff'}; border:2px solid ${isSelected ? 'var(--ins-pink)' : '#f0f0f0'}; border-radius:12px; cursor:pointer; transition:all 0.2s;">
+                    <div style="width:48px; height:48px; border-radius:50%; ${avatarStyle} margin-right:12px; flex-shrink:0;"></div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:15px; font-weight:500; color:#333; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${user.name}</div>
+                        <div style="font-size:12px; color:#999;">共享世界记忆</div>
+                    </div>
+                    ${isSelected ? '<div style="color:var(--ins-pink); font-size:20px; margin-left:8px;">✓</div>' : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    modal.style.display = 'flex';
+    modal.onclick = function(e) {
+        if (e.target === modal) hideLinkWorldUserModal();
+    };
+}
+
+function hideLinkWorldUserModal() {
+    const modal = document.getElementById('link-world-user-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function toggleLinkWorldUser(userId) {
+    if (!currentChatCharId) return;
+    const char = await db.characters.get(currentChatCharId);
+    if (!char) return;
+
+    const key = String(userId);
+    const currentList = Array.isArray(char.linked_world_user_ids) ? char.linked_world_user_ids.map(String) : [];
+    const nextSet = new Set(currentList);
+    if (nextSet.has(key)) nextSet.delete(key); else nextSet.add(key);
+    const nextList = Array.from(nextSet);
+
+    const currentAccountId = String(getCurrentAccountId() || '');
+    const ownerId = nextList.length ? (char.linked_world_owner_id ? String(char.linked_world_owner_id) : currentAccountId) : null;
+
+    // 第一次建立共享关系时直接固定到当前账号原有聊天桶，旧聊天不会因关联而消失。
+    // 已有共享关系则固定当前旧版 world:* 桶，之后成员增减也不再改变键名。
+    let stableBucketKey = char.shared_memory_bucket_key ? String(char.shared_memory_bucket_key) : null;
+    if (!stableBucketKey && nextList.length) {
+        if (currentList.length && char.linked_world_owner_id) {
+            stableBucketKey = buildLegacyWorldMemoryBucket(char, char.linked_world_owner_id, currentList);
+        } else {
+            stableBucketKey = currentAccountId;
+        }
+    }
+
+    const worldPrefix = `world:${getCharSharedProfileId(char)}:`;
+    const historicalKeys = new Set(Array.isArray(char.legacy_world_memory_buckets) ? char.legacy_world_memory_buckets : []);
+    Object.keys(char.chat_history_by_user || {}).forEach(bucketKey => {
+        if (bucketKey.startsWith(worldPrefix)) historicalKeys.add(bucketKey);
+    });
+    if (stableBucketKey && stableBucketKey.startsWith('world:')) historicalKeys.add(stableBucketKey);
+
+    const updatePayload = {
+        linked_world_user_ids: nextList,
+        linked_world_owner_id: ownerId,
+        shared_profile_id: getCharSharedProfileId(char),
+        legacy_world_memory_buckets: Array.from(historicalKeys),
+        memory_compat_version: 2
+    };
+    if (stableBucketKey) updatePayload.shared_memory_bucket_key = stableBucketKey;
+
+    await db.characters.update(currentChatCharId, updatePayload)
+        .catch(err => console.error('[toggleLinkWorldUser] update失败:', err));
+
+    await updateLinkedWorldUsersDisplay();
+    await showLinkWorldUserModal();
+}
+
+async function clearLinkedWorldUsers() {
+    if (!currentChatCharId) return;
+    await db.characters.update(currentChatCharId, {
+        linked_world_user_ids: [],
+        linked_world_owner_id: null
+    }).catch(err => {
+        console.error('[clearLinkedWorldUsers] update失败:', err);
+    });
+    await updateLinkedWorldUsersDisplay();
+    hideLinkWorldUserModal();
+    showToast('已清除关联');
+}
+
 // 确保挂载用户档案函数在全局作用域可访问
 window.showMountUserModal = showMountUserModal;
 window.hideMountUserModal = hideMountUserModal;
 window.selectMountUser = selectMountUser;
 window.unmountUser = unmountUser;
+window.showLinkWorldUserModal = showLinkWorldUserModal;
+window.hideLinkWorldUserModal = hideLinkWorldUserModal;
+window.toggleLinkWorldUser = toggleLinkWorldUser;
+window.clearLinkedWorldUsers = clearLinkedWorldUsers;
 
         async function setChatDetailAvatar(input) {
             const file = input.files[0];
@@ -19018,10 +22077,56 @@ window.unmountUser = unmountUser;
             }
         }
 
-        function applyChatBackground(char) {
+        function restoreChatBackgroundAfterFindPhone() {
             const chatBody = document.getElementById('chat-body');
             if (!chatBody) return;
-            
+
+            if (chatBody._fpPreviousBackgroundStyle) {
+                const previous = chatBody._fpPreviousBackgroundStyle;
+                chatBody.style.backgroundImage = previous.backgroundImage;
+                chatBody.style.backgroundSize = previous.backgroundSize;
+                chatBody.style.backgroundPosition = previous.backgroundPosition;
+                chatBody.style.backgroundRepeat = previous.backgroundRepeat;
+                chatBody.style.backgroundAttachment = previous.backgroundAttachment;
+                chatBody.style.backgroundColor = previous.backgroundColor;
+                delete chatBody._fpPreviousBackgroundStyle;
+            }
+            delete chatBody.dataset.findPhonePrivateBackground;
+        }
+
+        function applyChatBackground(char) {
+            const chatBody = document.getElementById('chat-body');
+            if (!chatBody || !char) return;
+
+            const isFindPhoneChat = Boolean(window._fpChatMode);
+            const findPhoneOwnerAccountId = String(findPhoneTargetAccountId || getCurrentAccountId() || '');
+            const findPhoneBackground = findPhoneOwnerAccountId
+                ? char.fp_chat_background_by_user?.[findPhoneOwnerAccountId] || ''
+                : char.fp_chat_background || '';
+
+            if (isFindPhoneChat) {
+                if (!chatBody._fpPreviousBackgroundStyle) {
+                    chatBody._fpPreviousBackgroundStyle = {
+                        backgroundImage: chatBody.style.backgroundImage,
+                        backgroundSize: chatBody.style.backgroundSize,
+                        backgroundPosition: chatBody.style.backgroundPosition,
+                        backgroundRepeat: chatBody.style.backgroundRepeat,
+                        backgroundAttachment: chatBody.style.backgroundAttachment,
+                        backgroundColor: chatBody.style.backgroundColor
+                    };
+                }
+                chatBody.dataset.findPhonePrivateBackground = 'true';
+                chatBody.style.backgroundImage = findPhoneBackground ? `url(${JSON.stringify(findPhoneBackground)})` : 'none';
+                chatBody.style.backgroundSize = findPhoneBackground ? 'cover' : '';
+                chatBody.style.backgroundPosition = findPhoneBackground ? 'center' : '';
+                chatBody.style.backgroundRepeat = findPhoneBackground ? 'no-repeat' : '';
+                chatBody.style.backgroundAttachment = findPhoneBackground ? 'fixed' : '';
+                chatBody.style.backgroundColor = findPhoneBackground ? '' : '#ededed';
+                return;
+            }
+
+            restoreChatBackgroundAfterFindPhone();
+
             if (char.chat_background) {
                 // ✅ 角色独立背景图（优先级高于主题背景）
                 chatBody.style.backgroundImage = `url(${char.chat_background})`;
@@ -19749,14 +22854,14 @@ window.unmountUser = unmountUser;
             if (confirm("确定要清空与该角色的聊天记录吗？（同时清除总结、通话记录和心声）")) {
                 const char = await db.characters.get(currentChatCharId);
                 const accountId = getCurrentAccountId();
-                await setChatHistory(char, accountId, []);
+                await setChatHistory(char, accountId, [], { isDelete: true });
                 
                 // ✅ 同时清除聊天总结
                 try {
                     const summaries = await db.chat_summaries.where('accountId').equals(accountId).toArray();
                     const toDelete = summaries.filter(s => s.chatType === 'private' && String(s.chatId) === String(currentChatCharId));
                     for (const s of toDelete) {
-                        await db.chat_summaries.delete(s.id);
+                        await deleteChatSummaryWithDerivedIndex(s.id);
                     }
                     if (toDelete.length > 0) console.log(`[clearChatHistory] ✅ 已清除 ${toDelete.length} 条聊天总结`);
                 } catch (e) {
@@ -20073,6 +23178,21 @@ self.addEventListener('message', function(event) {
         async function triggerScheduledActivity(char, accountId) {
             scheduledActivityLocks.add(char.id);
             try {
+                const freshChar = await db.characters.get(char.id);
+                if (!freshChar?.scheduled_activity_enabled || !(freshChar.scheduled_activity_interval > 0)) return;
+                await runCharAutonomousAction(char.id, accountId, { trigger: 'scheduled' });
+                lastScheduledActivityTime.set(char.id, Date.now());
+            } catch (error) {
+                console.error('[ScheduledActivity] 统一自主行动触发失败:', error);
+                lastScheduledActivityTime.set(char.id, Date.now());
+            } finally {
+                scheduledActivityLocks.delete(char.id);
+            }
+        }
+
+        async function triggerScheduledActivityLegacy(char, accountId) {
+            scheduledActivityLocks.add(char.id);
+            try {
                 const roleName = char.nick || char.name || '角色';
                 const roleDesc = char.description || '';
 
@@ -20301,6 +23421,10 @@ ${existingChatsContext.join('\n\n')}
                 } catch (e) {
                     console.warn('[triggerAutoChat] 读取总结记忆失败:', e);
                 }
+                const autonomousDirectiveContextAuto = char.allow_autonomous_activity
+                    ? buildCharAutonomousDirectiveContext(char)
+                    : '';
+                const phoneImagePersonalizationPromptAuto = buildRolePhoneImagePersonalizationPrompt(char);
 
                 // 🔧 构建实时话题感知
                 let recentTopicsContext = '';
@@ -20652,7 +23776,12 @@ images: 数量
 朋友圈权限（不让对方看你的朋友圈，对方不会收到任何提示，只是看不到你发的内容）：
 不让TA看我朋友圈：((BLOCK_MOMENTS))
 恢复让TA看我朋友圈：((UNBLOCK_MOMENTS))
-注意：这是一个隐秘操作，对方不会收到通知。适合生气、冷战、闹别扭但又不想闹到拉黑删除的程度时使用。使用后你仍可以正常发朋友圈，只是对方看不到。
+查询对方是否屏蔽了你看TA朋友圈：((CHECK_MOMENTS_PERMISSION))
+注意：这是一个隐秘操作，对方不会收到通知。
+注意：当你发送 ((CHECK_MOMENTS_PERMISSION)) 后，不会立刻拿到结果；需要等对方下一次发消息时系统才会把权限状态附加进上下文，你再在后续回复中得知结果。
+查询对方是否屏蔽了你看TA朋友圈：((CHECK_MOMENTS_PERMISSION))
+注意：这是一个隐秘操作，对方不会收到通知。
+注意：当你发送 ((CHECK_MOMENTS_PERMISSION)) 后，不会立刻拿到结果；需要等对方下一次发消息时系统才会把权限状态附加进上下文，你再在后续回复中得知结果。
 ${char.relationships && char.relationships.length > 0 ? `
 让关联NPC加对方好友（让你身边的人主动加对方）：
 ((NPC_ADD_FRIEND: NPC名字))` : ''}
@@ -20664,8 +23793,11 @@ ${char.relationships && char.relationships.length > 0 ? `
 ${char.allow_autonomous_activity ? `
 手机活动（你在自己手机上做的事）：
 ((PHONE_ACTIVITY: 简短描述你做了什么))
-例如：((PHONE_ACTIVITY: 给闺蜜发了条消息吐槽今天的事))、((PHONE_ACTIVITY: 刷了一会抖音点赞了几个视频))、((PHONE_ACTIVITY: 发了一条朋友圈记录心情))
-注意：这代表你在自己手机上的真实活动，对方看不到这个指令。你可以在聊天间隙自然地使用手机。` : ''}
+例如：((PHONE_ACTIVITY: 给手机联系人发了条消息吐槽今天的事))、((PHONE_ACTIVITY: 使用桌面已有的APP做了一件事))、((PHONE_ACTIVITY: 发了一条朋友圈记录心情))
+注意：这代表你在自己手机上的真实活动，对方看不到这个指令。你可以在聊天间隙自然地使用手机。
+
+${autonomousDirectiveContextAuto}` : ''}
+${phoneImagePersonalizationPromptAuto}
 ${char.identity?.password ? `
 修改账号密码：
 ((CHANGE_PASSWORD:新密码))
@@ -20975,6 +24107,9 @@ thought 要求：
                 // 清理回复内容
                 let cleanReplyProcessed = cleanMessage(cleanReply);
                 const replyText = cleanReplyProcessed;
+
+                // 记录角色输出过的内联指令（用于头像弹窗“活动”页签）
+                await logInlineCommandsFromText(targetCharId, replyText);
                 
                 if (!cleanReplyProcessed || !cleanReplyProcessed.trim()) {
                     console.warn(`[AutoChat] AI returned empty reply for ${char.name}`);
@@ -21043,6 +24178,7 @@ thought 要求：
                     console.log(`[AutoChat] 检测到朋友圈屏蔽指令 BLOCK_MOMENTS`);
                     try {
                         await executeBlockMoments(char.id, accountId, true);
+                        await logCharacterActivity(char.id, '设置了不让你看TA朋友圈');
                     } catch (e) {
                         console.error('[AutoChat] 朋友圈屏蔽失败:', e);
                     }
@@ -21052,10 +24188,22 @@ thought 要求：
                     console.log(`[AutoChat] 检测到朋友圈解除屏蔽指令 UNBLOCK_MOMENTS`);
                     try {
                         await executeBlockMoments(char.id, accountId, false);
+                        await logCharacterActivity(char.id, '恢复了让你看TA朋友圈');
                     } catch (e) {
                         console.error('[AutoChat] 朋友圈解除屏蔽失败:', e);
                     }
                     cleanReplyProcessed = cleanReplyProcessed.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
+                }
+                if (/\(\(CHECK_MOMENTS_PERMISSION\)\)/i.test(cleanReplyProcessed)) {
+                    console.log(`[AutoChat] 检测到朋友圈权限查询指令 CHECK_MOMENTS_PERMISSION`);
+                    try {
+                        const freshCharForQuery = await db.characters.get(char.id);
+                        if (freshCharForQuery) await setCharMomentsPermissionQueryRequested(freshCharForQuery, accountId, true);
+                        await logCharacterActivity(char.id, '打开了你的朋友圈');
+                    } catch (e) {
+                        console.error('[AutoChat] 设置朋友圈权限查询标记失败:', e);
+                    }
+                    cleanReplyProcessed = cleanReplyProcessed.replace(/\(\(CHECK_MOMENTS_PERMISSION\)\)/gi, '').trim();
                 }
                 
                 // 🎯 检测角色自主手机活动指令 ((PHONE_ACTIVITY:描述))
@@ -21630,7 +24778,7 @@ thought 要求：
                         }
                         
                         // 2. 发布朋友圈（传入图片描述）
-                        await publishMomentsByCharacter(freshChar, momentContent, imageCount, imageDesc);
+                        await publishMomentsByCharacter(freshChar, momentContent, imageCount, imageDesc, { accountId });
                         
                         console.log(`[AutoChat] ${freshChar.name} 发布了朋友圈${imageDesc ? ` [配图: ${imageDesc}]` : ''}`);
                         addLog('success', `角色发布朋友圈: ${freshChar.name}`, { content: momentContent });
@@ -21862,6 +25010,30 @@ thought 要求：
                         seg = seg.replace(/\(\(USE_IMAGE_AS_AVATAR(?::\s*\d+)?\)\)/gi, '').trim();
                         if (!seg) continue;
                     }
+
+                    const phoneChatBgMatchAuto = seg.match(/\(\(USE_IMAGE_AS_PHONE_CHAT_BACKGROUND(?::\s*(\d+))?\)\)/i);
+                    if (phoneChatBgMatchAuto) {
+                        const imageIndex = phoneChatBgMatchAuto[1] ? parseInt(phoneChatBgMatchAuto[1], 10) : 1;
+                        try {
+                            await executeUseImageAsRolePhoneAppearance(char.id, accountId, imageIndex, 'chat_background');
+                        } catch (e) {
+                            console.error('[AutoChat] 设置角色手机聊天背景失败:', e);
+                        }
+                        seg = seg.replace(/\(\(USE_IMAGE_AS_PHONE_CHAT_BACKGROUND(?::\s*\d+)?\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
+
+                    const phoneWallpaperMatchAuto = seg.match(/\(\(USE_IMAGE_AS_PHONE_WALLPAPER(?::\s*(\d+))?\)\)/i);
+                    if (phoneWallpaperMatchAuto) {
+                        const imageIndex = phoneWallpaperMatchAuto[1] ? parseInt(phoneWallpaperMatchAuto[1], 10) : 1;
+                        try {
+                            await executeUseImageAsRolePhoneAppearance(char.id, accountId, imageIndex, 'desktop_wallpaper');
+                        } catch (e) {
+                            console.error('[AutoChat] 设置角色手机桌面壁纸失败:', e);
+                        }
+                        seg = seg.replace(/\(\(USE_IMAGE_AS_PHONE_WALLPAPER(?::\s*\d+)?\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
                     
                     // 🎯 检测裁剪图片当头像指令 ((CROP_AVATAR: N, left, top, width, height)) - 在主动聊天分段中检测
                     const cropMatchAuto = seg.match(/\(\(CROP_AVATAR:\s*(\d+)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)\)/i);
@@ -22069,6 +25241,17 @@ thought 要求：
                         console.log(`[AutoChat] 检测到朋友圈解除屏蔽指令（分段）`);
                         try { await executeBlockMoments(char.id, accountId, false); } catch (e) { console.error('[AutoChat] 朋友圈解除屏蔽失败:', e); }
                         seg = seg.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
+                    if (/\(\(CHECK_MOMENTS_PERMISSION\)\)/i.test(seg)) {
+                        console.log(`[AutoChat] 检测到朋友圈权限查询指令（分段）`);
+                        try {
+                            const freshCharForQuery = await db.characters.get(char.id);
+                            if (freshCharForQuery) await setCharMomentsPermissionQueryRequested(freshCharForQuery, accountId, true);
+                        } catch (e) {
+                            console.error('[AutoChat] 设置朋友圈权限查询标记失败:', e);
+                        }
+                        seg = seg.replace(/\(\(CHECK_MOMENTS_PERMISSION\)\)/gi, '').trim();
                         if (!seg) continue;
                     }
                     
@@ -22337,18 +25520,22 @@ thought 要求：
                         if (markedCount > 0) {
                             try {
                                 const fpMemoryContent = `${userName}偷偷拿了${char.name}的手机，做了以下事情：${_fpNpcLinesForMemoryAuto.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${char.name}已经发现并做出了反应。`;
-                                await db.chat_summaries.add({
+                                await addChatSummaryWithDerivedIndex({
                                     accountId: accountId,
                                     chatType: 'private',
                                     chatId: String(char.id),
                                     time: Date.now(),
+                                    createdAt: Date.now(),
                                     content: fpMemoryContent,
                                     messageCount: 0,
                                     timeRange: '',
                                     keywords: ['查手机', '冒充', '手机被动'],
                                     startTime: Date.now(),
-                                    endTime: Date.now()
-                                });
+                                    endTime: Date.now(),
+                                    sourceType: 'event',
+                                    memoryScopeId: await resolveSummaryMemoryScope('private', char.id, accountId),
+                                    sourceMessageIds: []
+                                }, { structured: false });
                                 console.log('[triggerAutoChat] ✅ 查手机事件已写入长期记忆');
                             } catch (memErr) {
                                 console.warn('[triggerAutoChat] 写入查手机长期记忆失败:', memErr);
@@ -22920,6 +26107,18 @@ image_desc 字段：当 images > 0 时，用一句话描述配图内容。`;
             // time 始终使用真实创建时间 Date.now()，虚拟时间仅影响AI系统提示，不影响消息存储/排序/显示
             const userMsg = { role: 'user', content: text, time: Date.now() };
             
+            // 如果角色之前发起过“查询朋友圈权限”指令，则本次用户回复附带当前状态（仅给AI上下文用，不改变UI展示）
+            if (accountId && getCharMomentsPermissionQueryRequested(char, accountId)) {
+                const isBlockedNow = getCharMomentsBlocked(char, accountId);
+                userMsg.user_moments_permission_status = isBlockedNow ? 'blocked' : 'allowed';
+                userMsg.user_moments_permission_status_text = isBlockedNow ? '用户已屏蔽你查看TA朋友圈' : '用户允许你查看TA朋友圈';
+                try {
+                    await setCharMomentsPermissionQueryRequested(char, accountId, false);
+                } catch (e) {
+                    console.warn('[sendMessage] 清除朋友圈权限查询标记失败:', e);
+                }
+            }
+            
             // 如果有引用
             if (currentQuote) {
                 userMsg.quote = {
@@ -23156,6 +26355,17 @@ image_desc 字段：当 images > 0 时，用一句话描述配图内容。`;
                         loreContext = `\n【世界观/背景设定】\n${loreContext}`;
                     }
                 }
+
+                // 群聊长期总结：旧总结原样读取，新总结按群聊作用域读取。
+                let groupSummaryMemoryContext = '';
+                try {
+                    groupSummaryMemoryContext = await getSummaryMemoryContext('group', group.id, accountId);
+                    if (groupSummaryMemoryContext) {
+                        console.log('[triggerGroupMemberReply] ✅ 群聊长期总结已加载');
+                    }
+                } catch (summaryMemoryError) {
+                    console.warn('[triggerGroupMemberReply] 群聊长期总结读取失败:', summaryMemoryError);
+                }
                 
                 // 构建群聊上下文（使用自定义的上下文条数，默认25条）
                 const groupContextCount = group.context_message_count || 25;
@@ -23197,10 +26407,8 @@ image_desc 字段：当 images > 0 时，用一句话描述配图内容。`;
                             const charData = await getCachedCharacter(memberId);
                             if (!charData) continue;
                             
-                            // 兼容新旧数据结构
-                            const charHistory = _pcAccountId 
-                                ? (charData.chat_history_by_user?.[_pcAccountId] || [])
-                                : (charData.chat_history || []);
+                            // 通过统一桶解析读取，兼容固定共享记忆桶和旧账号结构。
+                            const charHistory = getChatHistory(charData, _pcAccountId);
                             if (charHistory.length === 0) continue;
                             
                             // ✅ 使用统一的上下文条数（与群聊共享池），不单独限制
@@ -23269,12 +26477,16 @@ ${virtualTimeStr}
 
 群名 ${group.name}
 用户昵称 ${myNickname}
-${pendingRedPackets.length > 0 ? `
+                ${pendingRedPackets.length > 0 ? `
 群里有未领完的红包
 ${pendingRedPackets.map(rp => `红包ID ${rp.id} "${rp.wish}" 还剩${rp.remaining}个 已领的 ${rp.claimed.join(',') || '无'}`).join('\n')}
 看到红包角色们会积极去抢 用 {"type": "claim_redpacket", "name": "角色名", "redpacketId": "红包ID"}
 每个角色只能领一次
 ` : ''}${loreContext}
+
+${groupSummaryMemoryContext ? `群聊长期记忆（已经发生过的事实）
+${groupSummaryMemoryContext}
+` : ''}
 
 群成员及人设
 ${membersList}
@@ -24219,6 +27431,9 @@ name字段只能用这些名字 ${validMemberNames.join(' ')}
             
             // ★ fp聊天模式：返回查手机微信页面
             if (window._fpChatMode) {
+                // chat-window 与用户侧聊天共用容器，退出查手机时立刻恢复原样，
+                // 不能让角色的私人聊天背景短暂或永久串到用户界面。
+                restoreChatBackgroundAfterFindPhone();
                 window._fpChatMode = false;
                 window._fpGroupChatMode = false; // ★ 清除fp群聊模式标记
                 // ★ 移除fp聊天详情页覆盖层
@@ -29148,15 +32363,8 @@ ${wishBlock}
             // 4. 获取总结记忆
             let summaryMemoryContext = "";
             try {
-                const summaries = await db.chatSummaries
-                    .where('[characterId+accountId]')
-                    .equals([char.id, accountId])
-                    .toArray();
-                
-                if (summaries.length > 0) {
-                    summaryMemoryContext = summaries.map(s => s.summary).join('\n\n');
-                    console.log(`[BlockedContact] ${char.name} 总结记忆已加载，条数:`, summaries.length);
-                }
+                summaryMemoryContext = await getSummaryMemoryContext('private', char.id, accountId);
+                if (summaryMemoryContext) console.log(`[BlockedContact] ${char.name} 总结记忆已加载`);
             } catch (e) {
                 console.warn(`[BlockedContact] ${char.name} 总结记忆加载失败:`, e);
             }
@@ -30322,6 +33530,10 @@ messages:
                 } catch (e) {
                     console.warn('[triggerAiReply] 读取总结记忆失败:', e);
                 }
+                const autonomousDirectiveContextMain = char.allow_autonomous_activity
+                    ? buildCharAutonomousDirectiveContext(char)
+                    : '';
+                const phoneImagePersonalizationPromptMain = buildRolePhoneImagePersonalizationPrompt(char);
 
                 // 2.6.1 构建实时话题感知（分析不同时间维度的关键词）
                 let recentTopicsContext = '';
@@ -30883,6 +34095,7 @@ images: 数量
 朋友圈权限（不让对方看你的朋友圈，对方不会收到任何提示，只是看不到你发的内容）：
 不让TA看我朋友圈：((BLOCK_MOMENTS))
 恢复让TA看我朋友圈：((UNBLOCK_MOMENTS))
+查询对方是否屏蔽了你看TA朋友圈：((CHECK_MOMENTS_PERMISSION))
 注意：这是一个隐秘操作，对方不会收到通知。适合生气、冷战、闹别扭但又不想闹到拉黑删除的程度时使用。使用后你仍可以正常发朋友圈，只是对方看不到。
 ${char.relationships && char.relationships.length > 0 ? `
 让关联NPC加对方好友（让你身边的人主动加对方）：
@@ -30903,8 +34116,11 @@ ${char.relationships && char.relationships.length > 0 ? `
 ${char.allow_autonomous_activity ? `
 手机活动（你在自己手机上做的事）：
 ((PHONE_ACTIVITY: 简短描述你做了什么))
-例如：((PHONE_ACTIVITY: 给闺蜜发了条消息吐槽今天的事))、((PHONE_ACTIVITY: 刷了一会抖音点赞了几个视频))、((PHONE_ACTIVITY: 发了一条朋友圈记录心情))
-注意：这代表你在自己手机上的真实活动，对方看不到这个指令。你可以在聊天间隙自然地使用手机。` : ''}
+例如：((PHONE_ACTIVITY: 给手机联系人发了条消息吐槽今天的事))、((PHONE_ACTIVITY: 使用桌面已有的APP做了一件事))、((PHONE_ACTIVITY: 发了一条朋友圈记录心情))
+注意：这代表你在自己手机上的真实活动，对方看不到这个指令。你可以在聊天间隙自然地使用手机。
+
+${autonomousDirectiveContextMain}` : ''}
+${phoneImagePersonalizationPromptMain}
 ${char.identity?.password ? `
 修改账号密码：
 ((CHANGE_PASSWORD:新密码))
@@ -31325,6 +34541,10 @@ ${(char.reply_min_count || 1) >= 3 ? `- 🚨 **reply中必须包含至少${(char
                         // ✅ 如果消息有引用，在内容前添加引用标注，让AI知道这条消息引用了之前的内容
                         if (m.quote) {
                             content = `「引用 ${m.quote.name}: ${m.quote.content}」${content}`;
+                        }
+                        // ✅ 若该条用户消息附带了朋友圈权限状态，则一并注入上下文
+                        if (m.role === 'user' && m.user_moments_permission_status_text) {
+                            content += `\n[朋友圈权限状态] ${m.user_moments_permission_status_text}`;
                         }
                         return {
                             role: role,
@@ -32253,6 +35473,30 @@ ${checkResult.checkResult}
                         }
                         replyText = replyText.replace(/\(\(REVERT_COUPLE_AVATAR\)\)/gi, '').trim();
                     }
+
+                    // ((USE_IMAGE_AS_PHONE_CHAT_BACKGROUND: N))
+                    const phoneChatBgMatchPre = replyText.match(/\(\(USE_IMAGE_AS_PHONE_CHAT_BACKGROUND(?::\s*(\d+))?\)\)/i);
+                    if (phoneChatBgMatchPre) {
+                        const imageIndex = phoneChatBgMatchPre[1] ? parseInt(phoneChatBgMatchPre[1], 10) : 1;
+                        try {
+                            await executeUseImageAsRolePhoneAppearance(targetCharId, accountId, imageIndex, 'chat_background');
+                        } catch (e) {
+                            console.error('[TriggerAI] 设置角色手机聊天背景失败:', e);
+                        }
+                        replyText = replyText.replace(/\(\(USE_IMAGE_AS_PHONE_CHAT_BACKGROUND(?::\s*\d+)?\)\)/gi, '').trim();
+                    }
+
+                    // ((USE_IMAGE_AS_PHONE_WALLPAPER: N))
+                    const phoneWallpaperMatchPre = replyText.match(/\(\(USE_IMAGE_AS_PHONE_WALLPAPER(?::\s*(\d+))?\)\)/i);
+                    if (phoneWallpaperMatchPre) {
+                        const imageIndex = phoneWallpaperMatchPre[1] ? parseInt(phoneWallpaperMatchPre[1], 10) : 1;
+                        try {
+                            await executeUseImageAsRolePhoneAppearance(targetCharId, accountId, imageIndex, 'desktop_wallpaper');
+                        } catch (e) {
+                            console.error('[TriggerAI] 设置角色手机桌面壁纸失败:', e);
+                        }
+                        replyText = replyText.replace(/\(\(USE_IMAGE_AS_PHONE_WALLPAPER(?::\s*\d+)?\)\)/gi, '').trim();
+                    }
                     
                     // ((CROP_AVATAR: N, left, top, width, height))
                     const cropMatchPre = replyText.match(/\(\(CROP_AVATAR:\s*(\d+)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)\)/i);
@@ -32274,13 +35518,31 @@ ${checkResult.checkResult}
                     // ((BLOCK_MOMENTS)) / ((UNBLOCK_MOMENTS)) - 朋友圈屏蔽（静默）
                     if (/\(\(BLOCK_MOMENTS\)\)/i.test(replyText)) {
                         console.log(`[TriggerAI] 预处理朋友圈屏蔽指令`);
-                        try { await executeBlockMoments(targetCharId, accountId, true); } catch (e) { console.error('[TriggerAI] 朋友圈屏蔽失败:', e); }
+                        try {
+                            await executeBlockMoments(targetCharId, accountId, true);
+                            await logCharacterActivity(targetCharId, '执行指令：屏蔽你查看TA朋友圈 ((BLOCK_MOMENTS))');
+                        } catch (e) { console.error('[TriggerAI] 朋友圈屏蔽失败:', e); }
                         replyText = replyText.replace(/\(\(BLOCK_MOMENTS\)\)/gi, '').trim();
                     }
                     if (/\(\(UNBLOCK_MOMENTS\)\)/i.test(replyText)) {
                         console.log(`[TriggerAI] 预处理朋友圈解除屏蔽指令`);
-                        try { await executeBlockMoments(targetCharId, accountId, false); } catch (e) { console.error('[TriggerAI] 朋友圈解除屏蔽失败:', e); }
+                        try {
+                            await executeBlockMoments(targetCharId, accountId, false);
+                            await logCharacterActivity(targetCharId, '执行指令：恢复你查看TA朋友圈 ((UNBLOCK_MOMENTS))');
+                        } catch (e) { console.error('[TriggerAI] 朋友圈解除屏蔽失败:', e); }
                         replyText = replyText.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
+                    }
+                    // ((CHECK_MOMENTS_PERMISSION)) - 查询用户朋友圈权限（延迟到用户下次回复再告知）
+                    if (/\(\(CHECK_MOMENTS_PERMISSION\)\)/i.test(replyText)) {
+                        console.log(`[TriggerAI] 预处理朋友圈权限查询指令`);
+                        try {
+                            const freshCharForQuery = await db.characters.get(targetCharId);
+                            if (freshCharForQuery) await setCharMomentsPermissionQueryRequested(freshCharForQuery, accountId, true);
+                            await logCharacterActivity(targetCharId, '执行指令：查询你是否屏蔽TA朋友圈权限 ((CHECK_MOMENTS_PERMISSION))');
+                        } catch (e) {
+                            console.error('[TriggerAI] 设置朋友圈权限查询标记失败:', e);
+                        }
+                        replyText = replyText.replace(/\(\(CHECK_MOMENTS_PERMISSION\)\)/gi, '').trim();
                     }
                     
                     // ((RECALL)) - 撤回：预处理移除，稍后在消息循环中不会遇到问题
@@ -32538,7 +35800,7 @@ ${checkResult.checkResult}
                             // 更新聊天中的卡片状态（内联实现，避免跨作用域问题）
                             const freshChar2 = await db.characters.get(targetCharId);
                             if (freshChar2) {
-                                const _irHist = freshChar2.chat_history_by_user?.[accountId] || freshChar2.chat_history || [];
+                                const _irHist = getChatHistory(freshChar2, accountId);
                                 let _irUpdated = false;
                                 for (let _iri = 0; _iri < _irHist.length; _iri++) {
                                     if (_irHist[_iri].type === 'intimateRequest') {
@@ -33026,7 +36288,7 @@ ${checkResult.checkResult}
                         }
                         
                         // 2. 发布朋友圈（传入图片描述）
-                        await publishMomentsByCharacter(freshChar, momentContent, imageCount, imageDesc);
+                        await publishMomentsByCharacter(freshChar, momentContent, imageCount, imageDesc, { accountId });
                         
                         console.log(`[TriggerAI] ${freshChar.name} 发布了朋友圈${imageDesc ? ` [配图: ${imageDesc}]` : ''}`);
                         
@@ -33533,6 +36795,17 @@ ${checkResult.checkResult}
                         seg = seg.replace(/\(\(UNBLOCK_MOMENTS\)\)/gi, '').trim();
                         if (!seg) continue;
                     }
+                    if (/\(\(CHECK_MOMENTS_PERMISSION\)\)/i.test(seg)) {
+                        console.log(`[AiReply] 检测到朋友圈权限查询指令（分段）`);
+                        try {
+                            const freshCharForQuery = await db.characters.get(targetCharId);
+                            if (freshCharForQuery) await setCharMomentsPermissionQueryRequested(freshCharForQuery, accountId, true);
+                        } catch (e) {
+                            console.error('[AiReply] 设置朋友圈权限查询标记失败:', e);
+                        }
+                        seg = seg.replace(/\(\(CHECK_MOMENTS_PERMISSION\)\)/gi, '').trim();
+                        if (!seg) continue;
+                    }
                     
                     // 🎯 检测NPC加好友指令 ((NPC_ADD_FRIEND: NPC名字)) - 在分段中检测
                     const npcAddMatchReply = seg.match(/\(\(NPC_ADD_FRIEND:\s*(.+?)\s*\)\)/i);
@@ -33824,18 +37097,22 @@ ${checkResult.checkResult}
                                 // ★ 将查手机事件写入长期记忆，确保角色永久记住此事（仅首次通知时写入）
                                 try {
                                     const fpMemoryContent = `${userName}偷偷拿了${char.name}的手机，做了以下事情：${_fpNpcLinesForMemory.map(l => l.trim().replace(/^[→←]\s*/, '')).join('；')}。${char.name}已经发现并做出了反应。`;
-                                    await db.chat_summaries.add({
+                                    await addChatSummaryWithDerivedIndex({
                                         accountId: accountId,
                                         chatType: 'private',
                                         chatId: String(targetCharId),
                                         time: Date.now(),
+                                        createdAt: Date.now(),
                                         content: fpMemoryContent,
                                         messageCount: 0,
                                         timeRange: '',
                                         keywords: ['查手机', '冒充', '手机被动'],
                                         startTime: Date.now(),
-                                        endTime: Date.now()
-                                    });
+                                        endTime: Date.now(),
+                                        sourceType: 'event',
+                                        memoryScopeId: await resolveSummaryMemoryScope('private', targetCharId, accountId),
+                                        sourceMessageIds: []
+                                    }, { structured: false });
                                     console.log('[triggerAiReply] ✅ 查手机事件已写入长期记忆');
                                 } catch (memErr) {
                                     console.warn('[triggerAiReply] 写入查手机长期记忆失败:', memErr);
@@ -34958,13 +38235,10 @@ function initDesktopDrag() {
         return;
     }
 
-    // 检测是否是移动设备
-    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-
     desktopSortable = new Sortable(grid, {
         animation: 350, // 动画时长，毫秒 - 稍慢一点更像iOS
-        delay: isTouchDevice ? 150 : 0, // 触摸设备长按150ms触发（优化：从300ms缩短到150ms，更灵敏）
-        delayOnTouchOnly: true, // 仅在触摸时启用延迟
+        delay: 150, // 手机和电脑都需短暂长按后才进入图标排序，给横向翻页手势让路
+        delayOnTouchOnly: false,
         touchStartThreshold: 8, // 手指移动超过8px取消长按判定（优化：从5px增加到8px，减少误触取消）
         
         // 关键：使用非原生拖拽，实现更丝滑的 JS 模拟效果
@@ -37687,14 +40961,73 @@ async function deleteMoment(id) {
 // 🎯 角色发布朋友圈（由AI触发）
 async function publishMomentsByCharacter(char, content, imageCount = 0, imageDesc = '', options = {}) {
     // 获取当前用户ID（用于ownerUserId，确保数据隔离正确）
-    const currentAccountId = getCurrentAccountId();
+    const currentAccountId = options.accountId || getCurrentAccountId();
+    
+    // 优先使用用户最近在当前对话里发送的真实图片
+    function pickRecentUserImagesFromChat(targetChar, maxCount) {
+        try {
+            if (!targetChar || maxCount <= 0) return [];
+            const result = [];
+            const chatHistory = getChatHistory(targetChar, currentAccountId) || [];
+
+            // 1) 主链路：当前项目私聊图片通常是 [img:base64/url]
+            for (let i = chatHistory.length - 1; i >= 0; i--) {
+                const msg = chatHistory[i];
+                if (!msg || msg.role !== 'user' || !msg.content) continue;
+                if (msg.isSticker || msg.imageDescription) continue;
+                if (typeof msg.content === 'string' && msg.content.startsWith('[img:') && msg.content.endsWith(']')) {
+                    const img = msg.content.substring(5, msg.content.length - 1);
+                    if (img) {
+                        result.unshift(img);
+                        if (result.length >= maxCount) return result.slice(-maxCount);
+                    }
+                }
+                if (msg.type === 'avatar_change' && msg.avatarImage) {
+                    result.unshift(msg.avatarImage);
+                    if (result.length >= maxCount) return result.slice(-maxCount);
+                }
+            }
+
+            // 2) 兼容链路：parts 结构
+            if (Array.isArray(targetChar.history)) {
+                for (let i = targetChar.history.length - 1; i >= 0; i--) {
+                    const msg = targetChar.history[i];
+                    if (!msg || msg.role !== 'user' || !Array.isArray(msg.parts)) continue;
+                    for (let j = 0; j < msg.parts.length; j++) {
+                        const p = msg.parts[j] || {};
+                        if (p.type !== 'image') continue;
+                        const img = p.data || p.url || p.src || p.image || p.image_url || '';
+                        if (!img) continue;
+                        result.unshift(img);
+                        if (result.length >= maxCount) return result.slice(-maxCount);
+                    }
+                }
+            }
+
+            return result.slice(-maxCount);
+        } catch (e) {
+            console.warn('[Moments] 读取聊天图片失败:', e);
+            return [];
+        }
+    }
+
+    const desiredCount = Math.max(0, parseInt(imageCount, 10) || 0);
+
+    let realImages = [];
+    if (Array.isArray(options.sourceImages) && options.sourceImages.length > 0) {
+        realImages = options.sourceImages.filter(Boolean).slice(0, desiredCount || options.sourceImages.length);
+    }
+    // 当角色声明要配图(images>0)但未显式给 sourceImages 时，自动使用当前会话里用户最近发送的真实图片
+    if (realImages.length === 0 && desiredCount > 0) {
+        realImages = pickRecentUserImagesFromChat(char, desiredCount);
+    }
     
     const momentData = {
         userId: char.id, // 发布者是角色
         content: content,
-        images: [], // 不再使用随机图片URL
-        imageCount: imageCount, // 保留图片数量信息
-        imageDesc: imageDesc || '', // 图片描述，用于卡片展示
+        images: realImages,
+        imageCount: realImages.length > 0 ? 0 : desiredCount,
+        imageDesc: realImages.length > 0 ? '' : (imageDesc || ''),
         time: Date.now(),
         ownerUserId: currentAccountId || char.id,
         likes: [],
@@ -37708,7 +41041,7 @@ async function publishMomentsByCharacter(char, content, imageCount = 0, imageDes
     
     const momentId = await db.moments.add(momentData);
     
-    console.log(`[Moments] ${char.name} 发布了朋友圈: ${content}${imageCount > 0 ? ` [配图${imageCount}张: ${imageDesc}]` : ''}`);
+    console.log(`[Moments] ${char.name} 发布了朋友圈: ${content}${imageCount > 0 ? ` [配图${imageCount}张: ${imageDesc}]` : ''} [真实图:${momentData.images.length}]`);
     
     // 如果当前在朋友圈页面，刷新列表
     const momentsPage = document.getElementById('moments-page');
@@ -42118,6 +45451,7 @@ let generatedVerificationCode = ''; // 存储生成的验证码
 let verificationCodeExpiry = 0; // 验证码过期时间
 let selectedUserPhone = ''; // 选中User的手机号
 
+
 // 当User选择改变时
 function onRegisterUserChange() {
     const selectElem = document.getElementById('register-user-select');
@@ -42363,8 +45697,10 @@ async function submitWechatRegister() {
 }
 
 // 导出完整的wechat状态快照（真实数据）
-async function exportWechatStateForAI(myChar) {
-    const accountId = getCurrentAccountId();
+async function exportWechatStateForAI(myChar, explicitAccountId = null, options = {}) {
+    // 允许线下查岗显式传入账号，避免依赖页面当前状态而串读其他 User 的数据。
+    const accountId = String(explicitAccountId || getCurrentAccountId() || '');
+    const viewerChar = options.viewerChar || null;
     
     // 1. 基础账号信息
     const accountInfo = {
@@ -42419,7 +45755,12 @@ async function exportWechatStateForAI(myChar) {
     });
     
     // 3. 获取朋友圈
-    const moments = await db.moments.where('ownerUserId').equals(accountId).toArray();
+    const momentsBlocked = viewerChar && typeof getCharMomentsBlocked === 'function'
+        ? getCharMomentsBlocked(viewerChar, accountId)
+        : false;
+    const moments = momentsBlocked
+        ? []
+        : await db.moments.where('ownerUserId').equals(accountId).toArray();
     const recentMoments = moments.slice(-10).map(m => ({
         content: m.content,
         images: m.images?.length || 0,
@@ -42430,7 +45771,11 @@ async function exportWechatStateForAI(myChar) {
     
     // 4. 获取好友请求
     const friendRequests = await db.friend_requests.toArray();
-    const pendingRequests = friendRequests.filter(r => r.status === 'pending').length;
+    const accountIdNum = parseInt(accountId);
+    const pendingRequests = friendRequests.filter(r =>
+        r.status === 'pending' &&
+        (String(r.toAccountId || '') === accountId || parseInt(r.toCharId) === accountIdNum)
+    ).length;
     
     // 5. 构建完整快照
     const wechatSnapshot = {
@@ -42445,6 +45790,7 @@ async function exportWechatStateForAI(myChar) {
         },
         friends: friends,
         recentMoments: recentMoments,
+        momentsBlocked: momentsBlocked,
         timestamp: Date.now()
     };
     
@@ -43347,6 +46693,10 @@ let isCameraOn = true;
 let currentVideoCallId = null; // 当前视频通话的ID
 let currentVideoCallMessages = []; // 当前视频通话的消息记录
 let isVideoCallMinimized = false; // 标记视频通话是否处于最小化状态
+let isScreenShareVideoMode = false; // 屏幕共享复用视频通话UI模式
+let videoSpeechRecognition = null;
+let isVideoSpeechListening = false;
+let videoSpeechAutoSendTimer = null;
 
 // 最小化视频通话 - 隐藏全屏页面，显示悬浮按钮
 function minimizeVideoCall() {
@@ -43959,6 +47309,17 @@ function hideVideoCallPage() {
         clearInterval(videoCallTimer);
         videoCallTimer = null;
     }
+    stopVideoSpeechToText();
+
+    if (isScreenShareVideoMode) {
+        stopScreenCallMic();
+        stopWebScreenFallback();
+        postToNativeScreenBridge('stopCapture');
+        screenCallState.running = false;
+        screenCallState.targetCharId = null;
+        screenCallState.targetCharName = '';
+        isScreenShareVideoMode = false;
+    }
 
     // 清除视频通话相关数据
     videoCallCharId = null;
@@ -44308,6 +47669,13 @@ ${loreContext ? `## 世界观设定\n${loreContext}` : ''}
 
 ---
 
+${isScreenShareVideoMode ? `## 屏幕共享上下文（重点）
+
+你正在观看对方实时共享的屏幕画面。用户每次发言都会附带当前屏幕截图，请你结合截图内容和对方文字进行回复。
+注意：你是${char.name}，保持角色扮演，不要把自己当成助手或系统。` : ''}
+
+---
+
 ## 场景
 
 你正在和${userName}进行**视频通话**（不是文字聊天！）。你和对方隔着手机屏幕进行视频对话，你可以看到对方，对方也能看到你。
@@ -44373,11 +47741,29 @@ ${loreContext ? `## 世界观设定\n${loreContext}` : ''}
             });
         }
         
+        const videoTurns = [];
+        const frameForAnalyze = isScreenShareVideoMode ? (screenCallState.lastFrameBase64 || '') : '';
+        for (let i = 0; i < videoMessages.length; i++) {
+            const m = videoMessages[i];
+            const isLastUserTurn = m.role === 'user' && i === videoMessages.length - 1;
+            if (isLastUserTurn && frameForAnalyze) {
+                videoTurns.push({
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: `${m.content}\n（附带当前屏幕截图）` },
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${frameForAnalyze}` } }
+                    ]
+                });
+            } else {
+                videoTurns.push(m);
+            }
+        }
+
         const messages = [
             { role: 'system', content: systemPrompt },
             ...recentHistory,
             { role: 'assistant', content: '[视频通话已接通]' },
-            ...videoMessages
+            ...videoTurns
         ];
 
         const rawReply = await callAI(messages);
@@ -44451,6 +47837,93 @@ ${loreContext ? `## 世界观设定\n${loreContext}` : ''}
 }
 
 // 重新生成视频通话中最后一条AI回复
+function updateVideoSpeechButton() {
+    const btn = document.getElementById('video-stt-btn');
+    if (!btn) return;
+    btn.style.backgroundColor = isVideoSpeechListening ? 'rgba(16,185,129,0.35)' : 'rgba(255,255,255,0.15)';
+    btn.style.borderColor = isVideoSpeechListening ? 'rgba(16,185,129,0.9)' : 'rgba(255,255,255,0.3)';
+}
+
+function stopVideoSpeechToText() {
+    if (videoSpeechAutoSendTimer) {
+        clearTimeout(videoSpeechAutoSendTimer);
+        videoSpeechAutoSendTimer = null;
+    }
+    isVideoSpeechListening = false;
+    if (videoSpeechRecognition) {
+        try {
+            videoSpeechRecognition.onend = null;
+            videoSpeechRecognition.stop();
+        } catch (e) {}
+        videoSpeechRecognition = null;
+    }
+    const input = document.getElementById('video-msg-input');
+    if (input) input.placeholder = '输入文字消息...';
+    updateVideoSpeechButton();
+}
+
+async function toggleVideoSpeechToText() {
+    if (isVideoSpeechListening) {
+        stopVideoSpeechToText();
+        showToast('已停止语音转文字');
+        return;
+    }
+    if (!videoCallCharId) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        showToast('当前环境不支持语音识别');
+        return;
+    }
+    const input = document.getElementById('video-msg-input');
+    if (!input) return;
+
+    isVideoSpeechListening = true;
+    updateVideoSpeechButton();
+    input.placeholder = '语音转文字中（再次点麦克风可停止）';
+    let finalText = '';
+
+    const recognition = new SpeechRecognition();
+    videoSpeechRecognition = recognition;
+    recognition.lang = 'zh-CN';
+    recognition.interimResults = true;
+    recognition.continuous = true;
+
+    recognition.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const t = event.results[i][0].transcript || '';
+            if (event.results[i].isFinal) finalText += t;
+            else interim += t;
+        }
+        input.value = (finalText + interim).trim();
+        if (videoSpeechAutoSendTimer) clearTimeout(videoSpeechAutoSendTimer);
+        videoSpeechAutoSendTimer = setTimeout(async () => {
+            const text = (input.value || '').trim();
+            if (!text || !isVideoSpeechListening) return;
+            await sendVideoMessage();
+            finalText = '';
+        }, 1200);
+    };
+    recognition.onerror = () => {
+        if (!isVideoSpeechListening) return;
+        showToast('语音识别中断，可再次点击麦克风重试');
+    };
+    recognition.onend = () => {
+        if (isVideoSpeechListening) {
+            try {
+                recognition.start();
+            } catch (e) {}
+        }
+    };
+    try {
+        recognition.start();
+        showToast('已开启语音转文字');
+    } catch (e) {
+        stopVideoSpeechToText();
+        showToast('开启语音识别失败');
+    }
+}
+
 async function regenerateVideoMessage() {
     if (!videoCallCharId) return;
 
@@ -44912,6 +48385,307 @@ let offlineModeCharId = null;
 let offlineModeHistory = [];
 let offlineRenderedCount = 0;
 let isLoadingMoreOfflineMessages = false;
+let offlinePhoneDecisionDraft = null;
+let offlinePhoneDecisionRequestId = null;
+let offlinePhoneWechatStateChanged = false;
+let offlinePendingRegeneration = null;
+
+function createOfflinePhoneRequestId() {
+    return `offline_phone_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getPendingOfflinePhoneRequest() {
+    for (let i = offlineModeHistory.length - 1; i >= 0; i--) {
+        const msg = offlineModeHistory[i];
+        if (msg?.type === 'offline_phone_request' && msg.phoneRequestStatus === 'pending') {
+            return msg;
+        }
+    }
+    return null;
+}
+
+function selectOfflinePhoneDecision(requestId, decision) {
+    const request = offlineModeHistory.find(msg =>
+        msg?.type === 'offline_phone_request' &&
+        msg.phoneRequestId === requestId &&
+        msg.phoneRequestStatus === 'pending'
+    );
+    if (!request || !['give', 'deny'].includes(decision)) return;
+
+    offlinePhoneDecisionRequestId = requestId;
+    offlinePhoneDecisionDraft = decision;
+    const charPromise = offlineModeCharId ? db.characters.get(offlineModeCharId) : Promise.resolve(null);
+    charPromise.then(char => {
+        if (char) renderOfflineChatBody(char);
+        const input = document.getElementById('offline-chat-input-box');
+        if (input) {
+            handleOfflineChatInputChange(input);
+            input.focus();
+        }
+    });
+}
+
+function detectOfflinePhoneCheckIntent(replyText) {
+    const raw = String(replyText || '');
+    // 兼容半角/全角括号、双括号、反引号，以及模型偶尔插入的空格或连字符。
+    // 包裹符号是可选的，所以即使模型只输出裸指令，也会触发前端选择卡片。
+    const checkPattern = /`*(?:(?:\[|【|\(\()\s*)?OFFLINE[\s_-]*CHECK[\s_-]*PHONE(?:\s*(?:\]|】|\)\)))?`*/i;
+    const wantsToCheck = checkPattern.test(raw);
+    const cleanReply = raw
+        .replace(/`*(?:(?:\[|【|\(\()\s*)?OFFLINE[\s_-]*CHECK[\s_-]*PHONE(?:\s*(?:\]|】|\)\)))?`*/gi, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    return { wantsToCheck, cleanReply };
+}
+
+function normalizeLatestOfflinePhoneRequest(char) {
+    if (!char?.allow_ai_check_account || offlineModeHistory.length === 0) return false;
+
+    const lastMsg = offlineModeHistory[offlineModeHistory.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') return false;
+
+    // 兼容旧版本已经落库的回复：当时可能只保存了裸指令，没有生成选择卡片元数据。
+    if (lastMsg.type === 'offline_phone_request') {
+        let changed = false;
+        if (!lastMsg.phoneRequestId) {
+            lastMsg.phoneRequestId = createOfflinePhoneRequestId();
+            changed = true;
+        }
+        if (!lastMsg.phoneRequestStatus) {
+            lastMsg.phoneRequestStatus = 'pending';
+            changed = true;
+        }
+        return changed;
+    }
+
+    const checkIntent = detectOfflinePhoneCheckIntent(lastMsg.content);
+    if (!checkIntent.wantsToCheck) return false;
+
+    lastMsg.content = checkIntent.cleanReply || 'TA把视线落在你的手机上，等着你的选择。';
+    lastMsg.type = 'offline_phone_request';
+    lastMsg.phoneRequestId = createOfflinePhoneRequestId();
+    lastMsg.phoneRequestStatus = 'pending';
+    return true;
+}
+
+function parseOfflineWechatActions(replyText) {
+    const raw = String(replyText || '');
+    const actions = [];
+    let cleanReply = raw;
+    let match;
+
+    const deleteRegex = /\[OFFLINE_DELETE_FRIEND:(\d+)\]/gi;
+    while ((match = deleteRegex.exec(raw)) !== null) {
+        actions.push({ type: 'delete', targetCharId: parseInt(match[1]), raw: match[0], sourceIndex: match.index });
+    }
+
+    const blacklistRegex = /\[OFFLINE_BLACKLIST_FRIEND:(\d+)\]/gi;
+    while ((match = blacklistRegex.exec(raw)) !== null) {
+        actions.push({ type: 'blacklist', targetCharId: parseInt(match[1]), raw: match[0], sourceIndex: match.index });
+    }
+
+    const sendRegex = /\[OFFLINE_SEND_MESSAGE:(\d+):([^\]]+)\]/gi;
+    while ((match = sendRegex.exec(raw)) !== null) {
+        actions.push({ type: 'send', targetCharId: parseInt(match[1]), message: match[2].trim(), raw: match[0], sourceIndex: match.index });
+    }
+
+    const momentsRegex = /\[OFFLINE_POST_MOMENTS:([^\]]+)\]/gi;
+    while ((match = momentsRegex.exec(raw)) !== null) {
+        actions.push({ type: 'moments', content: match[1].trim(), raw: match[0], sourceIndex: match.index });
+    }
+
+    actions.sort((a, b) => a.sourceIndex - b.sourceIndex);
+    for (const action of actions) cleanReply = cleanReply.replace(action.raw, '');
+    cleanReply = cleanReply
+        .replace(/\[OFFLINE_(?:DELETE_FRIEND|BLACKLIST_FRIEND|SEND_MESSAGE|POST_MOMENTS):[^\n]*/gi, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    return { actions, cleanReply };
+}
+
+function getUnconsumedOfflinePhoneGrant() {
+    for (let i = offlineModeHistory.length - 1; i >= 0; i--) {
+        const msg = offlineModeHistory[i];
+        if (msg?.type === 'offline_phone_decision') {
+            if (msg.phoneGrantConsumed) return null;
+            return msg.offlinePhoneDecision === 'give' ? msg : null;
+        }
+        if (msg?.role === 'assistant' && msg.type !== 'offline_phone_request') break;
+    }
+    return null;
+}
+
+async function buildOfflinePhoneWechatContext(char, myChar, accountId) {
+    const snapshot = await exportWechatStateForAI(myChar, accountId, { viewerChar: char });
+    const friendLines = snapshot.friends.slice(0, 20).map(friend => {
+        const recent = (friend.recentMessages || []).slice(-5).map(msg => {
+            const speaker = msg.role === 'user' ? myChar.name : friend.name;
+            return `      ${speaker}：${String(msg.content || '').replace(/\s+/g, ' ').slice(0, 120)}`;
+        }).join('\n');
+        return `- ID ${friend.id}｜${friend.name}${friend.remark ? `（备注：${friend.remark}）` : ''}｜共${friend.messageCount}条消息${recent ? `\n${recent}` : ''}`;
+    }).join('\n');
+
+    const momentLines = snapshot.momentsBlocked
+        ? '（该角色被设置为不可查看此账号朋友圈）'
+        : (snapshot.recentMoments.length
+            ? snapshot.recentMoments.map(m => `- ${String(m.content || '（无文字）').slice(0, 160)}`).join('\n')
+            : '暂无朋友圈');
+
+    let context = `\n\n## 📱 本轮线下查岗：用户已经把手机交给你\n`;
+    context += `这是一次性授权。你必须在本次回复中完成查看和决定，回复结束后权限自动失效。\n`;
+    context += `你正在查看的是【${myChar.name}】当前关联的真实 WeChat 数据，禁止编造不存在的好友或聊天。\n\n`;
+    context += `【好友和最近聊天】\n${friendLines || '暂无好友'}\n\n`;
+    context += `【最近朋友圈】\n${momentLines}\n`;
+
+    if (char.allow_shura_mode) {
+        context += `\n【可执行操作】\n`;
+        context += `如人设和剧情需要，你可以在回复末尾输出以下隐藏指令，可同时输出多个：\n`;
+        context += `- 删除好友：[OFFLINE_DELETE_FRIEND:好友ID]\n`;
+        context += `- 拉黑好友：[OFFLINE_BLACKLIST_FRIEND:好友ID]\n`;
+        context += `- 以${myChar.name}身份代发消息：[OFFLINE_SEND_MESSAGE:好友ID:消息1///消息2]\n`;
+        context += `- 以${myChar.name}身份发朋友圈：[OFFLINE_POST_MOMENTS:朋友圈内容]\n`;
+        context += `只能使用上面真实列表中的数字ID。指令只是后台操作标记，正文仍要自然续写线下动作、神态和对话。\n`;
+    }
+    return context;
+}
+
+async function executeOfflineWechatActions(char, accountId, grantMessage, actions) {
+    const results = [];
+    const accountKey = String(accountId || '');
+
+    // 与线上查岗一致：操作目标就是当前登录的 WeChat User 账号。
+    // 线下入口已经由“当前账号 + 当前角色”确定会话，不再用 linked_user_id 二次拦截。
+    if (!char.allow_shura_mode || !accountKey) {
+        return actions.map(action => ({ ...action, success: false, reason: '未获得该账号的操作权限' }));
+    }
+
+    for (let index = 0; index < actions.length; index++) {
+        const action = actions[index];
+        const actionId = `${grantMessage.phoneRequestId}:${index}`;
+        try {
+            if (action.type === 'moments') {
+                if (!action.content) throw new Error('朋友圈内容为空');
+                const existingMoments = await db.moments.where('ownerUserId').equals(accountKey).toArray();
+                if (existingMoments.some(moment => moment.offline_phone_action_id === actionId)) {
+                    results.push({ ...action, actionId, success: true, duplicateSkipped: true, summary: '该朋友圈操作已经执行过' });
+                    continue;
+                }
+                await db.moments.add({
+                    userId: parseInt(accountKey),
+                    content: action.content,
+                    images: [],
+                    imageCount: 0,
+                    imageDesc: '',
+                    time: Date.now(),
+                    ownerUserId: accountKey,
+                    likes: [],
+                    comments: [],
+                    offline_phone_posted_by: char.name,
+                    offline_phone_action_id: actionId
+                });
+                results.push({ ...action, actionId, success: true, summary: `以你的身份发布了朋友圈：「${action.content}」` });
+                offlinePhoneWechatStateChanged = true;
+                continue;
+            }
+
+            const target = await db.characters.get(action.targetCharId);
+            if (!target || target.type === 'user') throw new Error('目标好友不存在');
+            const currentStatus = getFriendStatus(target, accountKey);
+            if (currentStatus !== 'friend') throw new Error('目标当前不是该账号的好友');
+            const displayName = getCharDisplayName(target, accountKey);
+
+            if (action.type === 'delete') {
+                // 只改变当前账号的好友关系；会话继续留在聊天列表，全部聊天记录保留。
+                await setFriendStatus(target, accountKey, 'deleted');
+                const freshTarget = await db.characters.get(target.id);
+                const hiddenByUser = { ...(freshTarget?.chat_hidden_by_user || target.chat_hidden_by_user || {}) };
+                hiddenByUser[accountKey] = false;
+                await db.characters.update(target.id, {
+                    chat_hidden_by_user: hiddenByUser
+                });
+                results.push({ ...action, actionId, success: true, summary: `删除了好友「${displayName}」（聊天记录已保留）` });
+            } else if (action.type === 'blacklist') {
+                await setFriendStatus(target, accountKey, 'blocked');
+                results.push({ ...action, actionId, success: true, summary: `拉黑了好友「${displayName}」（聊天记录已保留）` });
+            } else if (action.type === 'send') {
+                const messages = String(action.message || '').split('///').map(text => text.trim()).filter(Boolean);
+                if (!messages.length) throw new Error('代发消息为空');
+                const history = [...getChatHistory(target, accountKey)];
+                if (history.some(message => message.offline_phone_action_id === actionId)) {
+                    results.push({ ...action, actionId, success: true, duplicateSkipped: true, summary: `给「${displayName}」的代发消息已经执行过` });
+                    continue;
+                }
+                messages.forEach((content, messageIndex) => {
+                    history.push({
+                        role: 'user',
+                        content,
+                        time: Date.now() + messageIndex,
+                        offline_phone_sent_by: char.name,
+                        offline_phone_action_id: actionId
+                    });
+                });
+                await setChatHistory(target, accountKey, history);
+                await db.characters.update(target.id, {
+                    lastMsg: messages[messages.length - 1],
+                    lastMsgTime: Date.now()
+                });
+                results.push({ ...action, actionId, success: true, messageCount: messages.length, summary: `以你的身份给「${displayName}」发送了${messages.length}条消息` });
+            }
+            offlinePhoneWechatStateChanged = true;
+        } catch (error) {
+            results.push({ ...action, actionId, success: false, reason: error.message || String(error) });
+        }
+    }
+    return results;
+}
+
+function appendOfflinePhoneExtras(fragment, msg) {
+    if (msg?.type === 'offline_phone_request' && msg.phoneRequestStatus === 'pending') {
+        const card = document.createElement('div');
+        card.className = 'offline-phone-request-card';
+
+        const title = document.createElement('div');
+        title.className = 'offline-phone-request-title';
+        title.textContent = 'TA想查看你的手机';
+        card.appendChild(title);
+
+        const hint = document.createElement('div');
+        hint.className = 'offline-phone-request-hint';
+        hint.textContent = '选择后仍可继续输入文字，点击发送时会一起发出';
+        card.appendChild(hint);
+
+        const choices = document.createElement('div');
+        choices.className = 'offline-phone-request-choices';
+        [
+            { value: 'give', label: '把手机给TA' },
+            { value: 'deny', label: '不给TA' }
+        ].forEach(option => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'offline-phone-choice-btn';
+            if (offlinePhoneDecisionRequestId === msg.phoneRequestId && offlinePhoneDecisionDraft === option.value) {
+                button.classList.add('selected');
+            }
+            button.textContent = option.label;
+            button.addEventListener('click', () => selectOfflinePhoneDecision(msg.phoneRequestId, option.value));
+            choices.appendChild(button);
+        });
+        card.appendChild(choices);
+        fragment.appendChild(card);
+    }
+
+    if (Array.isArray(msg?.offlinePhoneActionResults) && msg.offlinePhoneActionResults.length > 0) {
+        const log = document.createElement('div');
+        log.className = 'offline-phone-action-log';
+        const successful = msg.offlinePhoneActionResults.filter(result => result.success);
+        const failed = msg.offlinePhoneActionResults.filter(result => !result.success);
+        const lines = [];
+        successful.forEach(result => lines.push(`✓ ${result.summary}`));
+        failed.forEach(result => lines.push(`未执行：${result.reason || '操作失败'}`));
+        log.textContent = lines.join('\n');
+        fragment.appendChild(log);
+    }
+}
 
 // 显示线下模式
 async function showOfflineMode() {
@@ -44935,9 +48709,15 @@ async function showOfflineMode() {
     }
 
     offlineModeCharId = currentChatCharId;
+    offlinePhoneDecisionDraft = null;
+    offlinePhoneDecisionRequestId = null;
+    offlinePendingRegeneration = null;
     
     // 加载线下模式历史记录（优先IndexedDB，兼容localStorage旧数据）
     offlineModeHistory = await loadOfflineChatHistory(accountId, offlineModeCharId);
+    if (normalizeLatestOfflinePhoneRequest(char)) {
+        await saveOfflineChatHistory(accountId, offlineModeCharId, offlineModeHistory);
+    }
 
     // 设置标题
     const title = document.getElementById('offline-chat-title');
@@ -44952,11 +48732,27 @@ async function showOfflineMode() {
 }
 
 // 隐藏线下模式
-function hideOfflineMode() {
+async function hideOfflineMode() {
     const offlinePage = document.getElementById('offline-chat-window');
     offlinePage.style.display = 'none';
     
     offlineModeCharId = null;
+    offlinePhoneDecisionDraft = null;
+    offlinePhoneDecisionRequestId = null;
+    offlinePendingRegeneration = null;
+
+    // 查岗操作已经直接写入真实 WeChat 数据；退出线下模式时刷新当前微信标签页。
+    if (offlinePhoneWechatStateChanged) {
+        offlinePhoneWechatStateChanged = false;
+        try {
+            const activeTab = document.querySelector('#wechat-page .wechat-tab-item.active');
+            const tabs = Array.from(document.querySelectorAll('#wechat-page .wechat-tab-item'));
+            const tabIndex = activeTab ? Math.max(0, tabs.indexOf(activeTab)) : 0;
+            await switchWechatTab(tabIndex);
+        } catch (error) {
+            console.warn('[OfflinePhoneCheck] 刷新WeChat页面失败，将在下次打开时刷新:', error);
+        }
+    }
 }
 
 // 渲染线下模式聊天内容（懒加载：只渲染最近50条，点击加载更多）
@@ -44972,7 +48768,7 @@ async function renderOfflineChatBody(char) {
     }
 
     const accountId = getCurrentAccountId();
-    const userAvatarUrl = await getUserAvatarUrl(char.linked_user_id);
+    const userAvatarUrl = await getUserAvatarUrl(parseInt(accountId));
 
     applyOfflineBubbleCSS();
 
@@ -45031,6 +48827,7 @@ async function renderOfflineChatBody(char) {
         row.appendChild(avatar);
         row.appendChild(content);
         fragment.appendChild(row);
+        appendOfflinePhoneExtras(fragment, msg);
     });
 
     body.appendChild(fragment);
@@ -45083,7 +48880,7 @@ async function loadMoreOfflineMessages() {
         }
         
         const accountId = getCurrentAccountId();
-        const userAvatarUrl = await getUserAvatarUrl(char.linked_user_id);
+        const userAvatarUrl = await getUserAvatarUrl(parseInt(accountId));
         const fragment = document.createDocumentFragment();
         
         messagesToPrepend.forEach((msg, relativeIndex) => {
@@ -45125,6 +48922,7 @@ async function loadMoreOfflineMessages() {
             row.appendChild(avatar);
             row.appendChild(content);
             fragment.appendChild(row);
+            appendOfflinePhoneExtras(fragment, msg);
         });
         
         const firstMessage = body.querySelector('.offline-msg-row, .offline-msg-timestamp');
@@ -45314,6 +49112,10 @@ async function handleOfflineMsgEdit() {
     
     const msg = offlineModeHistory[savedIndex];
     if (!msg) return;
+    if (msg.type === 'offline_phone_request' || msg.type === 'offline_phone_decision' || Array.isArray(msg.offlinePhoneActionResults)) {
+        showToast('查岗选择和操作记录不能编辑');
+        return;
+    }
     
     const editIndex = savedIndex;
     const editCharId = savedCharId;
@@ -45338,8 +49140,21 @@ async function handleOfflineMsgDelete() {
     const savedCharId = offlineModeCharId;
     hideOfflineContextMenu();
     if (savedIndex === -1 || !savedCharId) return;
+    const targetMsg = offlineModeHistory[savedIndex];
+    if (targetMsg?.type === 'offline_phone_request' || targetMsg?.type === 'offline_phone_decision' || Array.isArray(targetMsg?.offlinePhoneActionResults)) {
+        showToast('查岗选择和操作记录不能删除');
+        return;
+    }
     
     if (!confirm('删除这条消息？')) return;
+
+    if (targetMsg?.role === 'assistant') {
+        offlinePendingRegeneration = {
+            accountId: String(getCurrentAccountId() || ''),
+            charId: savedCharId,
+            previousReply: String(targetMsg.content || '')
+        };
+    }
     
     // 删除消息
     offlineModeHistory.splice(savedIndex, 1);
@@ -45364,7 +49179,7 @@ function handleOfflineChatInputKey(e) {
 // 处理线下模式输入框变化
 function handleOfflineChatInputChange(textarea) {
     const btn = document.getElementById('offline-btn-send');
-    if (textarea.value.trim()) {
+    if (textarea.value.trim() || offlinePhoneDecisionDraft) {
         btn.style.opacity = '1';
     } else {
         btn.style.opacity = '0.5';
@@ -45379,11 +49194,20 @@ function handleOfflineChatInputChange(textarea) {
 async function sendOfflineMessage() {
     const input = document.getElementById('offline-chat-input-box');
     const text = input.value.trim();
+    const pendingRequest = getPendingOfflinePhoneRequest();
     
-    if (!text || !offlineModeCharId) return;
+    if (!offlineModeCharId) return;
+    if (pendingRequest && (!offlinePhoneDecisionDraft || offlinePhoneDecisionRequestId !== pendingRequest.phoneRequestId)) {
+        showToast('请先选择是否把手机给TA');
+        return;
+    }
+    if (!text && !offlinePhoneDecisionDraft) return;
 
     const char = await db.characters.get(offlineModeCharId);
     if (!char) return;
+
+    // 用户又发送了新内容后，不再把下一次回复视为对已删除回复的重新生成。
+    offlinePendingRegeneration = null;
 
     const accountId = getCurrentAccountId();
 
@@ -45394,11 +49218,28 @@ async function sendOfflineMessage() {
     // 重新聚焦输入框，保持键盘不收起
     input.focus();
 
-    // 添加用户消息（存储真实创建时间，虚拟时间偏移仅在显示时由 formatMessageTime 处理）
-    const userMsg = { role: 'user', content: text, time: Date.now() };
+    // 添加用户消息；查岗选择与输入文字作为同一个回合提交。
+    let content = text;
+    const userMsg = { role: 'user', content: '', time: Date.now() };
+    if (pendingRequest && offlinePhoneDecisionDraft) {
+        const decision = offlinePhoneDecisionDraft;
+        const decisionLabel = decision === 'give' ? '把手机给TA' : '不给TA';
+        content = `【${decisionLabel}】${text ? `\n${text}` : ''}`;
+        userMsg.type = 'offline_phone_decision';
+        userMsg.offlinePhoneDecision = decision;
+        userMsg.phoneRequestId = pendingRequest.phoneRequestId;
+        userMsg.phoneGrantConsumed = decision !== 'give';
+        pendingRequest.phoneRequestStatus = decision === 'give' ? 'granted' : 'denied';
+        pendingRequest.phoneDecision = decision;
+        pendingRequest.phoneDecidedAt = Date.now();
+        offlinePhoneDecisionDraft = null;
+        offlinePhoneDecisionRequestId = null;
+    }
+    userMsg.content = content;
+    handleOfflineChatInputChange(input);
     offlineModeHistory.push(userMsg);
     
-    console.log('[OfflineMode] 用户发送消息:', text);
+    console.log('[OfflineMode] 用户发送消息:', content);
     
     // 保存到IndexedDB（同时兜底localStorage）
     await saveOfflineChatHistory(accountId, offlineModeCharId, offlineModeHistory);
@@ -45416,17 +49257,33 @@ async function requestOfflineReply() {
         return;
     }
 
+    // 查岗请求必须先通过可点击选项提交，不能跳过选择继续生成下一条回复。
+    if (getPendingOfflinePhoneRequest()) {
+        showToast('请先选择“把手机给TA”或“不给TA”，发送后再接收回复');
+        return;
+    }
+
     const char = await db.characters.get(offlineModeCharId);
     if (!char) return;
 
     const accountId = getCurrentAccountId();
     const key = `offline_chat_${accountId}_${offlineModeCharId}`;
+    const pendingRegeneration = offlinePendingRegeneration &&
+        offlinePendingRegeneration.charId === offlineModeCharId &&
+        offlinePendingRegeneration.accountId === String(accountId || '')
+        ? { ...offlinePendingRegeneration }
+        : null;
 
     // 显示loading状态
     setOfflineGenerating(true);
 
     try {
-        await generateOfflineReply(char, accountId, key);
+        await generateOfflineReply(char, accountId, key, pendingRegeneration ? {
+            isReroll: true,
+            previousReply: pendingRegeneration.previousReply,
+            source: 'deleted_message'
+        } : {});
+        if (pendingRegeneration) offlinePendingRegeneration = null;
     } catch (error) {
         console.error('[OfflineMode] AI回复失败:', error);
         showToast('生成回复失败: ' + error.message);
@@ -45495,7 +49352,7 @@ function hideOfflineLoadingIndicator() {
 }
 
 // 生成线下模式AI回复
-async function generateOfflineReply(char, accountId, storageKey) {
+async function generateOfflineReply(char, accountId, storageKey, options = {}) {
     // 获取正常聊天记录作为背景上下文
     let normalChatHistory = getChatHistory(char, accountId);
     
@@ -45505,14 +49362,50 @@ async function generateOfflineReply(char, accountId, storageKey) {
     const myPersonaDesc = myChar?.description || myChar?.personality || '普通用户';
     const friendName = char.name;
     const friendPersona = char.description || char.personality || '';
-    
-    // 获取对话对象（用户）人设（通过 linked_user_id）
-    let userDesc = "";
-    if (char.linked_user_id) {
-        const user = await db.characters.get(char.linked_user_id);
-        if (user && user.description) {
-            userDesc = `\n   - **详细设定**：${user.description}`;
+
+    // 线下递手机查岗为一次性授权：只在用户选择“给”后的这一轮注入真实数据。
+    let offlinePhoneGrant = getUnconsumedOfflinePhoneGrant();
+    let offlinePhoneContext = '';
+    // 与线上查岗相同，线下查岗只绑定当前登录的 WeChat User 账号。
+    // showOfflineMode 已经用当前账号校验并打开当前角色，因此这里不再检查 linked_user_id。
+    const currentWechatAccountId = String(accountId || '');
+    const canUseOfflinePhoneCheck = !!(myChar && currentWechatAccountId && char.allow_ai_check_account);
+    if (offlinePhoneGrant) {
+        if (canUseOfflinePhoneCheck) {
+            offlinePhoneContext = await buildOfflinePhoneWechatContext(char, myChar, currentWechatAccountId);
+        } else {
+            offlinePhoneGrant.phoneGrantConsumed = true;
+            offlinePhoneGrant.phoneGrantError = '当前WeChat账号不可用或未开启查岗';
+            offlinePhoneGrant = null;
         }
+    }
+
+    let offlinePhoneCapabilityPrompt = '';
+    if (!offlinePhoneGrant && canUseOfflinePhoneCheck) {
+        offlinePhoneCapabilityPrompt = `
+
+## 线下查岗能力
+你们现在是线下见面。如果剧情中出现明确且合理的查岗动机，你可以提出查看${myName}的手机。
+这是低频行为，普通闲聊不要触发，也不要连续触发。
+需要发起时，在本次回复最后单独输出：[OFFLINE_CHECK_PHONE]
+正文中要先用符合人设的动作和台词自然提出要求。系统会向${myName}展示“把手机给TA / 不给TA”的选择。
+在对方明确选择给你之前，你看不到任何手机或WeChat数据，也不能输出任何操作指令。`;
+    }
+
+    const rerollPreviousReply = String(options.previousReply || '').trim();
+    const rerollInstruction = options.isReroll
+        ? `
+
+## 本轮是重新生成
+上一版回复已被用户要求重写。必须生成明显不同的新版本：更换动作、措辞、情绪推进和对话内容，禁止原样复述或仅做少量同义替换。
+上一版内容仅用于避重：
+${rerollPreviousReply.slice(0, 800)}`
+        : '';
+    
+    // 获取当前 WeChat User 的人设；与线上查岗使用同一个当前账号来源。
+    let userDesc = "";
+    if (myChar?.description) {
+        userDesc = `\n   - **详细设定**：${myChar.description}`;
     }
     
     // 获取世界书上下文
@@ -45664,11 +49557,13 @@ ${recentSummary}
     const minWords = settings.minWords || 100;
     const maxWords = settings.maxWords || 500;
     const customPreset = settings.customPreset || '';
+    const generationRequestId = `offline_generation_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     
     // 线上聊天记录将在消息数组中以时间线方式合并（不再作为摘要）
     
         // 构建系统提示词
     const systemPrompt = `# 角色指令 (System Instruction) - 线下模式
+内部生成请求标识：${generationRequestId}（仅用于确保本次请求唯一，回复中禁止提及）
 你现在的身份是【${friendName}】，正在与【${myName}】进行**线下真实见面**。
 ⚠️ 重要：你的名字是${friendName}，你不是${myName}！你是独立的角色，有自己的性格和想法。
 请彻底忘掉你是一个语言模型，完全沉浸在这个角色的灵魂中。
@@ -45687,6 +49582,9 @@ ${summaryMemoryContext ? `\n## 你的记忆（必须严格遵守，这些是已�
 ${loreContext ? `\n## 📖 世界书设定\n${loreContext}` : ''}
 ${groupMemoryContext || ''}
 ${momentsContextText || ''}
+${offlinePhoneCapabilityPrompt}
+${offlinePhoneContext}
+${rerollInstruction}
 
 ${antiRepeatContext || ''}
 
@@ -45723,8 +49621,9 @@ ${antiRepeatContext || ''}
    
    **重要：回复中必须包含换行符（\n），让内容分段显示，不要所有文字堆在一起！**
 9. **【⚠️ 绝对禁止输出前缀标记】**：
-   - 回复中**严禁**出现任何方括号前缀，如 [微信消息]、[线下]、[旁白] 等
-   - 直接输出角色的动作描写和对话内容，不要添加任何元标记
+    - 回复中**严禁**出现任何方括号前缀，如 [微信消息]、[线下]、[旁白] 等
+    - 直接输出角色的动作描写和对话内容，不要添加任何元标记
+    - 唯一例外是本提示中明确提供的 OFFLINE_CHECK_PHONE 或 OFFLINE_* 后台操作指令；它们必须放在正文末尾，前端会自动隐藏
 
 ${normalChatHistory.length > 0 ? `
 ## ★ 线上线下统一世界观
@@ -45899,17 +49798,67 @@ ${customPreset ? `\n## 📌 额外设定\n${customPreset}` : ''}`;
         console.log('[generateOfflineReply] 📤 发送消息数:', messages.length, '条');
     console.log('[generateOfflineReply] 消息角色序列:', messages.map(m => m.role).join(' → '));
 
-    const reply = await callAI(messages);
+    let reply = await callAI(messages, options.isReroll ? { temperature: 1.0 } : {});
+    if (options.isReroll && rerollPreviousReply) {
+        const normalizeRerollText = text => String(text || '')
+            .replace(/\[OFFLINE_[^\]]*\]/gi, '')
+            .replace(/\s+/g, '')
+            .trim();
+        if (normalizeRerollText(reply) === normalizeRerollText(rerollPreviousReply)) {
+            console.warn('[OfflineMode] 重新生成返回了相同内容，自动重试一次');
+            reply = await callAI([
+                ...messages,
+                {
+                    role: 'user',
+                    content: '（请彻底重写上一版，使用全新的动作、台词和情绪推进，不要复述任何原句。）'
+                }
+            ], { temperature: 1.15 });
+        }
+    }
+    const checkIntent = detectOfflinePhoneCheckIntent(reply);
+    const parsedActions = parseOfflineWechatActions(checkIntent.cleanReply);
+    let actionResults = [];
 
-    // 添加AI回复
-    const aiMsg = { role: 'assistant', content: reply, time: Date.now() };
+    if (offlinePhoneGrant) {
+        actionResults = await executeOfflineWechatActions(
+            char,
+            currentWechatAccountId,
+            offlinePhoneGrant,
+            parsedActions.actions
+        );
+        // 无论角色是否实际操作，本次回复完成后授权都自动结束。
+        offlinePhoneGrant.phoneGrantConsumed = true;
+        offlinePhoneGrant.phoneGrantConsumedAt = Date.now();
+        offlinePhoneGrant.offlinePhoneActions = actionResults.map(result => ({
+            actionId: result.actionId,
+            type: result.type,
+            targetCharId: result.targetCharId || null,
+            success: !!result.success,
+            reason: result.reason || null
+        }));
+    }
+
+    const cleanReply = parsedActions.cleanReply || 'TA看着你的手机，安静地等着你的回答。';
+    const aiMsg = {
+        role: 'assistant',
+        content: cleanReply,
+        time: Date.now(),
+        generationRequestId,
+        regenerated: !!options.isReroll
+    };
+    if (actionResults.length > 0) aiMsg.offlinePhoneActionResults = actionResults;
+    if (checkIntent.wantsToCheck && !offlinePhoneGrant && canUseOfflinePhoneCheck) {
+        aiMsg.type = 'offline_phone_request';
+        aiMsg.phoneRequestId = createOfflinePhoneRequestId();
+        aiMsg.phoneRequestStatus = 'pending';
+    }
     offlineModeHistory.push(aiMsg);
     
     // 保存到IndexedDB（同时兜底localStorage）
     await saveOfflineChatHistory(accountId, char.id, offlineModeHistory);
     
     // 刷新显示
-    renderOfflineChatBody(char);
+    await renderOfflineChatBody(char);
 }
 
 // 重新生成最后一条AI回复
@@ -45928,30 +49877,40 @@ async function rerollOfflineMessage() {
         showToast('最后一条消息不是AI回复');
         return;
     }
-    
-    // 移除最后一条AI回复
-    offlineModeHistory.pop();
+    if (Array.isArray(lastMsg.offlinePhoneActionResults) && lastMsg.offlinePhoneActionResults.length > 0) {
+        showToast('该回复已经执行过查岗操作，不能重新生成');
+        return;
+    }
     
     const char = await db.characters.get(offlineModeCharId);
     if (!char) return;
     
     const accountId = getCurrentAccountId();
     const key = `offline_chat_${accountId}_${offlineModeCharId}`;
-    
-    // 保存移除后的历史到IndexedDB（同时兜底localStorage）
-    await saveOfflineChatHistory(accountId, offlineModeCharId, offlineModeHistory);
-    
-    // 刷新显示
-    renderOfflineChatBody(char);
-    
-    // 显示loading状态
+
+    // 先锁定生成按钮，再从内存和持久化历史中删除旧回复并立即刷新界面。
+    // 这样用户会明确看到旧回复已经消失，再开始生成新的回复。
     setOfflineGenerating(true);
+    offlineModeHistory.pop();
+    if (lastMsg.type === 'offline_phone_request') {
+        offlinePhoneDecisionDraft = null;
+        offlinePhoneDecisionRequestId = null;
+    }
+    await saveOfflineChatHistory(accountId, offlineModeCharId, offlineModeHistory);
+    await renderOfflineChatBody(char);
+    // renderOfflineChatBody 会清空聊天区，因此重新挂载生成提示。
+    showOfflineLoadingIndicator();
     
-    // 重新生成回复
     try {
-        await generateOfflineReply(char, accountId, key);
+        await generateOfflineReply(char, accountId, key, {
+            isReroll: true,
+            previousReply: lastMsg.content,
+            source: 'reroll_button'
+        });
+        offlinePendingRegeneration = null;
     } catch (error) {
         console.error('重新生成失败:', error);
+        // 重新生成失败也不恢复旧回复；旧回复已经按用户操作删除。
         showToast('重新生成失败: ' + error.message);
     } finally {
         setOfflineGenerating(false);
@@ -46222,6 +50181,646 @@ function formatTime(timestamp) {
 // 当前查看的总结ID
 let currentViewingSummaryId = null;
 
+async function resolveSummaryMemoryScope(chatType, chatId, accountId) {
+    const normalizedAccountId = accountId ? String(accountId) : 'offline';
+    if (chatType === 'private') {
+        const char = await db.characters.get(parseInt(chatId));
+        const bucketId = char ? resolveWorldMemoryBucket(char, normalizedAccountId) : normalizedAccountId;
+        return `private:${String(chatId)}:${String(bucketId || normalizedAccountId)}`;
+    }
+    return `group:${String(chatId)}:${normalizedAccountId}`;
+}
+
+// 统一总结查询：旧记录继续按 accountId 读取；带 memoryScopeId 的新记录可在固定共享桶中召回。
+async function queryChatSummaries(chatType, chatId, accountId, options = {}) {
+    const normalizedAccountId = accountId ? String(accountId) : 'offline';
+    const normalizedChatId = String(chatId);
+    let summaries = [];
+
+    try {
+        summaries = await db.chat_summaries
+            .where(['accountId', 'chatType', 'chatId'])
+            .equals([normalizedAccountId, chatType, normalizedChatId])
+            .toArray();
+    } catch (e) {
+        const accountSummaries = await db.chat_summaries.where('accountId').equals(normalizedAccountId).toArray();
+        summaries = accountSummaries.filter(s => s.chatType === chatType && String(s.chatId) === normalizedChatId);
+    }
+
+    // 兼容早期导入数据中 accountId/chatId 的数字与字符串类型差异。
+    if (summaries.length === 0) {
+        const allLegacySummaries = await db.chat_summaries.toArray();
+        summaries = allLegacySummaries.filter(summary =>
+            String(summary.accountId) === normalizedAccountId &&
+            summary.chatType === chatType &&
+            String(summary.chatId) === normalizedChatId
+        );
+    }
+
+    if (options.includeSharedScope !== false) {
+        const memoryScopeId = await resolveSummaryMemoryScope(chatType, normalizedChatId, normalizedAccountId);
+        const allSummaries = await db.chat_summaries.toArray();
+        for (const summary of allSummaries) {
+            if (summary.chatType === chatType &&
+                String(summary.chatId) === normalizedChatId &&
+                summary.memoryScopeId === memoryScopeId) {
+                summaries.push(summary);
+            }
+        }
+    }
+
+    const unique = new Map();
+    for (const summary of summaries) {
+        const key = summary.id != null
+            ? `id:${summary.id}`
+            : `${summary.accountId}|${summary.chatType}|${summary.chatId}|${summary.time}|${summary.content}`;
+        unique.set(key, summary);
+    }
+    return Array.from(unique.values());
+}
+
+async function queryVisibleSummariesForAccount(accountId) {
+    const normalizedAccountId = accountId ? String(accountId) : 'offline';
+    const allSummaries = await db.chat_summaries.toArray();
+    const visible = [];
+    const privateScopeCache = new Map();
+
+    for (const summary of allSummaries) {
+        if (String(summary.accountId) === normalizedAccountId) {
+            visible.push(summary);
+            continue;
+        }
+        if (summary.chatType !== 'private' || !summary.memoryScopeId) continue;
+        const chatId = String(summary.chatId);
+        if (!privateScopeCache.has(chatId)) {
+            privateScopeCache.set(
+                chatId,
+                await resolveSummaryMemoryScope('private', chatId, normalizedAccountId)
+            );
+        }
+        if (summary.memoryScopeId === privateScopeCache.get(chatId)) visible.push(summary);
+    }
+
+    const unique = new Map(visible.map(summary => [summary.id, summary]));
+    return Array.from(unique.values());
+}
+
+// ===== 第二阶段：派生记忆索引（旧聊天/旧总结始终是只读源） =====
+const MEMORY_INDEX_V2_MANIFEST_KEY = 'memory_index_manifest_v2';
+const MEMORY_RETRIEVAL_V2_DEFAULT_BUDGET = 2600;
+const MEMORY_ITEM_KINDS = new Set([
+    'core_fact', 'relationship', 'world_event', 'episodic', 'plan', 'preference', 'summary'
+]);
+const MEMORY_ITEM_STATUSES = new Set(['active', 'completed', 'cancelled', 'superseded']);
+
+function isMemoryIndexV2Enabled() {
+    return localStorage.getItem('memory_index_v2_enabled') !== 'false';
+}
+
+// 默认保持影子模式，只有明确设置为 true 才让新检索接管提示词。
+function isMemoryRetrievalV2Enabled() {
+    return localStorage.getItem('memory_retrieval_v2_enabled') === 'true';
+}
+
+function setMemoryRetrievalV2Enabled(enabled) {
+    localStorage.setItem('memory_retrieval_v2_enabled', enabled ? 'true' : 'false');
+    console.log(`[MemoryIndexV2] 检索模式已切换为：${enabled ? '启用' : '影子'}`);
+}
+
+function getMemoryRetrievalBudget() {
+    const configured = Number(localStorage.getItem('memory_retrieval_v2_budget'));
+    return Number.isFinite(configured) && configured >= 800
+        ? Math.min(configured, 8000)
+        : MEMORY_RETRIEVAL_V2_DEFAULT_BUDGET;
+}
+
+function hashMemoryText(text) {
+    let hash = 2166136261;
+    const normalized = String(text || '');
+    for (let index = 0; index < normalized.length; index++) {
+        hash ^= normalized.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function uniqueMemoryStrings(values, limit = 20) {
+    const result = [];
+    const seen = new Set();
+    for (const value of (Array.isArray(values) ? values : [])) {
+        const text = String(value || '').trim();
+        const key = text.toLowerCase();
+        if (!text || seen.has(key)) continue;
+        seen.add(key);
+        result.push(text.slice(0, 80));
+        if (result.length >= limit) break;
+    }
+    return result;
+}
+
+function getLegacySummaryScopeId(summary) {
+    return `legacy:${String(summary?.accountId || 'offline')}:${String(summary?.chatType || 'private')}:${String(summary?.chatId || '')}`;
+}
+
+function getEffectiveSummaryScopeId(summary) {
+    return summary?.memoryScopeId || getLegacySummaryScopeId(summary);
+}
+
+function getSummaryArchiveSourceKey(summary) {
+    if (summary?.id != null) return `summary:${summary.id}:archive`;
+    return `summary:legacy:${hashMemoryText(JSON.stringify(summary || {}))}:archive`;
+}
+
+function getSummaryRevision(summary) {
+    return hashMemoryText(JSON.stringify({
+        accountId: summary?.accountId,
+        chatType: summary?.chatType,
+        chatId: summary?.chatId,
+        content: summary?.content,
+        keywords: summary?.keywords,
+        startTime: summary?.startTime,
+        endTime: summary?.endTime,
+        sourceType: summary?.sourceType,
+        memoryScopeId: summary?.memoryScopeId
+    }));
+}
+
+function buildArchiveMemoryItem(summary, existingId) {
+    const now = Date.now();
+    return {
+        ...(existingId != null ? { id: existingId } : {}),
+        sourceKey: getSummaryArchiveSourceKey(summary),
+        memoryScopeId: getEffectiveSummaryScopeId(summary),
+        accountId: String(summary?.accountId || 'offline'),
+        chatType: summary?.chatType || 'private',
+        chatId: String(summary?.chatId || ''),
+        kind: 'summary',
+        content: String(summary?.content || '').trim(),
+        subject: '',
+        predicate: '',
+        object: '',
+        entities: [],
+        keywords: uniqueMemoryStrings(summary?.keywords || []),
+        importance: 2,
+        confidence: 1,
+        status: 'active',
+        eventStartTime: Number(summary?.eventStartTime || summary?.startTime || summary?.time || 0),
+        eventEndTime: Number(summary?.eventEndTime || summary?.endTime || summary?.time || 0),
+        sourceSummaryId: summary?.id ?? null,
+        sourceMessageIds: Array.isArray(summary?.sourceMessageIds) ? summary.sourceMessageIds.slice(0, 500) : [],
+        pinned: false,
+        supersededBy: null,
+        sourceRevision: getSummaryRevision(summary),
+        createdAt: Number(summary?.createdAt || summary?.time || now),
+        updatedAt: now
+    };
+}
+
+async function ensureSummaryArchiveMemoryItem(summary) {
+    if (!isMemoryIndexV2Enabled() || !db.memory_items || !summary?.content) return null;
+    const sourceKey = getSummaryArchiveSourceKey(summary);
+    const existing = await db.memory_items.where('sourceKey').equals(sourceKey).first();
+    const revision = getSummaryRevision(summary);
+    if (existing && existing.sourceRevision === revision) return existing;
+    const item = buildArchiveMemoryItem(summary, existing?.id);
+    if (existing) await db.memory_items.put(item);
+    else item.id = await db.memory_items.add(item);
+    return item;
+}
+
+function normalizeStructuredMemoryItem(rawItem, summary, index) {
+    if (!rawItem || typeof rawItem !== 'object') return null;
+    const content = String(rawItem.content || '').trim();
+    if (!content) return null;
+    const kind = MEMORY_ITEM_KINDS.has(rawItem.kind) && rawItem.kind !== 'summary'
+        ? rawItem.kind
+        : 'episodic';
+    const status = MEMORY_ITEM_STATUSES.has(rawItem.status) && rawItem.status !== 'superseded'
+        ? rawItem.status
+        : 'active';
+    const importance = Math.max(1, Math.min(5, Math.round(Number(rawItem.importance) || 3)));
+    const confidenceValue = Number(rawItem.confidence);
+    const confidence = Number.isFinite(confidenceValue)
+        ? Math.max(0, Math.min(1, confidenceValue))
+        : 0.75;
+    const subject = String(rawItem.subject || '').trim().slice(0, 120);
+    const predicate = String(rawItem.predicate || '').trim().slice(0, 120);
+    const object = String(rawItem.object || '').trim().slice(0, 240);
+    const factKey = subject && predicate
+        ? `${kind}:${subject.toLowerCase()}:${predicate.toLowerCase()}`
+        : '';
+    const identity = hashMemoryText(`${kind}|${subject}|${predicate}|${object}|${content}|${index}`);
+    const now = Date.now();
+
+    return {
+        sourceKey: `summary:${summary.id}:item:${identity}`,
+        memoryScopeId: getEffectiveSummaryScopeId(summary),
+        accountId: String(summary.accountId || 'offline'),
+        chatType: summary.chatType || 'private',
+        chatId: String(summary.chatId || ''),
+        kind,
+        content: content.slice(0, 800),
+        subject,
+        predicate,
+        object,
+        factKey,
+        entities: uniqueMemoryStrings(rawItem.entities || []),
+        keywords: uniqueMemoryStrings(rawItem.keywords || summary.keywords || []),
+        importance,
+        confidence,
+        status,
+        eventStartTime: Number(rawItem.eventStartTime || summary.eventStartTime || summary.startTime || summary.time || 0),
+        eventEndTime: Number(rawItem.eventEndTime || summary.eventEndTime || summary.endTime || summary.time || 0),
+        sourceSummaryId: summary.id,
+        sourceMessageIds: Array.isArray(summary.sourceMessageIds) ? summary.sourceMessageIds.slice(0, 500) : [],
+        pinned: !!rawItem.pinned,
+        supersededBy: null,
+        sourceRevision: getSummaryRevision(summary),
+        createdAt: Number(summary.createdAt || summary.time || now),
+        updatedAt: now
+    };
+}
+
+async function extractStructuredMemoryItems(summary) {
+    if (!summary?.id || !summary?.content) return [];
+    const extractionPrompt = `请从下面的聊天总结中提取可长期使用的原子记忆。只提取原文明确表达的信息，不推测，不补充。
+
+返回严格 JSON：
+{"items":[{"kind":"core_fact|relationship|world_event|episodic|plan|preference","content":"一条可独立理解的记忆","subject":"主体","predicate":"关系或属性","object":"对象或值","entities":["实体"],"keywords":["关键词"],"importance":1,"confidence":0.0,"status":"active|completed|cancelled"}]}
+
+规则：
+1. 最多8条；没有值得长期记住的内容就返回 {"items":[]}。
+2. importance 为1-5；confidence 为0-1。
+3. 计划尚未完成用 active，已经完成用 completed，明确取消用 cancelled。
+4. 每条 content 必须保留人物名称、事件和必要时间信息。
+
+总结时间：${summary.timeRange || '未知'}
+总结内容：${String(summary.content).slice(0, 4000)}`;
+    const response = await callAI([
+        { role: 'system', content: extractionPrompt },
+        { role: 'user', content: '提取结构化长期记忆。' }
+    ], { json_mode: true, _useSecondary: true });
+    const parsed = extractAndParseJSON(response);
+    return Array.isArray(parsed?.items) ? parsed.items.slice(0, 8) : [];
+}
+
+async function persistStructuredMemoryItems(summary, rawItems) {
+    if (!db.memory_items || !summary?.id) return [];
+    const normalizedItems = rawItems
+        .map((item, index) => normalizeStructuredMemoryItem(item, summary, index))
+        .filter(Boolean);
+    const savedItems = [];
+
+    for (const item of normalizedItems) {
+        const existing = await db.memory_items.where('sourceKey').equals(item.sourceKey).first();
+        if (existing) {
+            savedItems.push(existing);
+            continue;
+        }
+
+        item.id = await db.memory_items.add(item);
+        savedItems.push(item);
+
+        // 只在派生表中处理明确的“同主体、同属性、不同值”冲突；旧事实保留但降为历史版本。
+        if (item.factKey && ['core_fact', 'relationship', 'preference', 'plan'].includes(item.kind)) {
+            const activeItems = await db.memory_items
+                .where(['memoryScopeId', 'status'])
+                .equals([item.memoryScopeId, 'active'])
+                .toArray();
+            const conflicting = activeItems.filter(oldItem =>
+                oldItem.id !== item.id &&
+                oldItem.factKey === item.factKey &&
+                (item.kind === 'plan' || String(oldItem.object || oldItem.content) !== String(item.object || item.content)) &&
+                Number(oldItem.eventEndTime || oldItem.createdAt || 0) <= Number(item.eventEndTime || item.createdAt || 0)
+            );
+            for (const oldItem of conflicting) {
+                await db.memory_items.update(oldItem.id, {
+                    status: 'superseded',
+                    supersededBy: item.id,
+                    updatedAt: Date.now()
+                });
+            }
+        }
+    }
+    return savedItems;
+}
+
+async function indexSummaryMemory(summary, options = {}) {
+    if (!isMemoryIndexV2Enabled() || !db.memory_items || !summary) return;
+    try {
+        await ensureSummaryArchiveMemoryItem(summary);
+        if (options.structured === true) {
+            const rawItems = await extractStructuredMemoryItems(summary);
+            await persistStructuredMemoryItems(summary, rawItems);
+        }
+    } catch (error) {
+        // 索引失败绝不能影响已经成功写入的旧摘要。
+        console.warn('[MemoryIndexV2] 派生索引失败，旧总结保持可用:', error);
+    }
+}
+
+// 始终先写旧总结表；派生索引在后台运行，失败不会改变总结写入结果。
+async function addChatSummaryWithDerivedIndex(summaryData, options = {}) {
+    const id = await db.chat_summaries.add(summaryData);
+    const savedSummary = { ...summaryData, id };
+    Promise.resolve()
+        .then(() => indexSummaryMemory(savedSummary, options))
+        .catch(error => console.warn('[MemoryIndexV2] 后台索引失败:', error));
+    return id;
+}
+
+async function removeDerivedMemoryForSummaryIds(summaryIds) {
+    if (!db.memory_items || !Array.isArray(summaryIds) || summaryIds.length === 0) return;
+    try {
+        const normalizedIds = new Set(summaryIds.map(id => String(id)));
+        const items = await db.memory_items.toArray();
+        const itemIds = items
+            .filter(item => item.sourceSummaryId != null && normalizedIds.has(String(item.sourceSummaryId)))
+            .map(item => item.id)
+            .filter(id => id != null);
+        if (itemIds.length > 0) await db.memory_items.bulkDelete(itemIds);
+    } catch (error) {
+        console.warn('[MemoryIndexV2] 清理派生索引失败，可在下次启动时自动重建:', error);
+    }
+}
+
+async function deleteChatSummaryWithDerivedIndex(summaryId) {
+    await db.chat_summaries.delete(summaryId);
+    await removeDerivedMemoryForSummaryIds([summaryId]);
+}
+
+async function bulkDeleteChatSummariesWithDerivedIndex(summaryIds) {
+    if (!Array.isArray(summaryIds) || summaryIds.length === 0) return;
+    await db.chat_summaries.bulkDelete(summaryIds);
+    await removeDerivedMemoryForSummaryIds(summaryIds);
+}
+
+function buildMemorySourceState(characters, groups, summaries) {
+    const characterState = (characters || []).map(char => {
+        const buckets = [];
+        if (Array.isArray(char.chat_history)) {
+            buckets.push(`legacy:${char.chat_history.length}:${hashChatHistoryForManifest(char.chat_history)}`);
+        }
+        for (const [bucketId, history] of Object.entries(char.chat_history_by_user || {})) {
+            buckets.push(`${bucketId}:${Array.isArray(history) ? history.length : 0}:${hashChatHistoryForManifest(history)}`);
+        }
+        return `${char.id}=${buckets.sort().join(',')}`;
+    }).sort();
+    const groupState = (groups || []).map(group =>
+        `${group.id}:${Array.isArray(group.chat_history) ? group.chat_history.length : 0}:${hashChatHistoryForManifest(group.chat_history || [])}`
+    ).sort();
+    const summaryState = (summaries || []).map(summary =>
+        `${summary.id}:${getSummaryRevision(summary)}`
+    ).sort();
+    return {
+        characterCount: (characters || []).length,
+        groupCount: (groups || []).length,
+        summaryCount: (summaries || []).length,
+        characterHash: hashMemoryText(characterState.join('|')),
+        groupHash: hashMemoryText(groupState.join('|')),
+        summaryHash: hashMemoryText(summaryState.join('|'))
+    };
+}
+
+async function readMemorySourceState() {
+    const [characters, groups, summaries] = await Promise.all([
+        db.characters.toArray(),
+        db.group_chats.toArray(),
+        db.chat_summaries.toArray()
+    ]);
+    return {
+        state: buildMemorySourceState(characters, groups, summaries),
+        summaries
+    };
+}
+
+function memorySourceStatesEqual(before, after) {
+    return before?.characterCount === after?.characterCount &&
+        before?.groupCount === after?.groupCount &&
+        before?.summaryCount === after?.summaryCount &&
+        before?.characterHash === after?.characterHash &&
+        before?.groupHash === after?.groupHash &&
+        before?.summaryHash === after?.summaryHash;
+}
+
+async function backfillDerivedMemoryArchives(summaries) {
+    let created = 0;
+    let refreshed = 0;
+    const existingArchives = await db.memory_items.where('kind').equals('summary').toArray();
+    const existingBySourceKey = new Map(existingArchives.map(item => [item.sourceKey, item]));
+    const upserts = [];
+    for (const summary of (summaries || [])) {
+        if (!summary?.content) continue;
+        const sourceKey = getSummaryArchiveSourceKey(summary);
+        const existing = existingBySourceKey.get(sourceKey);
+        const revision = getSummaryRevision(summary);
+        if (!existing) {
+            upserts.push(buildArchiveMemoryItem(summary));
+            created++;
+        } else if (existing.sourceRevision !== revision) {
+            upserts.push(buildArchiveMemoryItem(summary, existing.id));
+            refreshed++;
+        }
+    }
+    if (upserts.length > 0) await db.memory_items.bulkPut(upserts);
+    return { created, refreshed };
+}
+
+async function pruneOrphanedDerivedMemoryItems(summaries) {
+    const validSummaryIds = new Set((summaries || []).map(summary => String(summary.id)));
+    const items = await db.memory_items.toArray();
+    const orphanIds = items
+        .filter(item => item.sourceSummaryId != null && !validSummaryIds.has(String(item.sourceSummaryId)))
+        .map(item => item.id)
+        .filter(id => id != null);
+    if (orphanIds.length > 0) await db.memory_items.bulkDelete(orphanIds);
+    return orphanIds.length;
+}
+
+async function initializeDerivedMemoryIndexV2() {
+    if (!isMemoryIndexV2Enabled() || !db.memory_items) return false;
+    try {
+        let manifestRecord = await db.dexiData.get(MEMORY_INDEX_V2_MANIFEST_KEY);
+        // 首次已通过源数据指纹校验后，后续启动只增量同步派生表，避免反复扫描全部聊天正文。
+        if (manifestRecord?.value?.lastValidatedAt) {
+            const summaries = await db.chat_summaries.toArray();
+            const result = await backfillDerivedMemoryArchives(summaries);
+            const pruned = await pruneOrphanedDerivedMemoryItems(summaries);
+            console.log(`[MemoryIndexV2] 增量同步完成：新增${result.created}，刷新${result.refreshed}，清理${pruned}`);
+            return true;
+        }
+
+        const before = await readMemorySourceState();
+        if (!manifestRecord) {
+            manifestRecord = {
+                key: MEMORY_INDEX_V2_MANIFEST_KEY,
+                value: { version: 2, capturedAt: Date.now(), sourceState: before.state }
+            };
+            await db.dexiData.put(manifestRecord);
+        }
+
+        const result = await backfillDerivedMemoryArchives(before.summaries);
+        const pruned = await pruneOrphanedDerivedMemoryItems(before.summaries);
+        const after = await readMemorySourceState();
+        if (!memorySourceStatesEqual(before.state, after.state)) {
+            localStorage.setItem('memory_index_v2_enabled', 'false');
+            localStorage.setItem('memory_retrieval_v2_enabled', 'false');
+            console.error('[MemoryIndexV2] 源数据校验不一致，已停用新索引和新检索');
+            return false;
+        }
+
+        manifestRecord.value.lastValidatedAt = Date.now();
+        manifestRecord.value.lastSourceState = after.state;
+        manifestRecord.value.archiveCount = await db.memory_items.where('kind').equals('summary').count();
+        await db.dexiData.put(manifestRecord);
+        console.log(`[MemoryIndexV2] ✅ 派生索引就绪：新增${result.created}，刷新${result.refreshed}，清理孤立索引${pruned}；旧数据校验一致`);
+        return true;
+    } catch (error) {
+        localStorage.setItem('memory_retrieval_v2_enabled', 'false');
+        console.warn('[MemoryIndexV2] 初始化失败，继续使用原总结记忆:', error);
+        return false;
+    }
+}
+
+function tokenizeMemoryQuery(text) {
+    const normalized = String(text || '').toLowerCase();
+    const tokens = new Set();
+    const words = normalized.match(/[a-z0-9_]{2,}|[\u4e00-\u9fff]+/g) || [];
+    for (const word of words) {
+        if (/^[\u4e00-\u9fff]+$/.test(word)) {
+            if (word.length <= 4) tokens.add(word);
+            for (let index = 0; index < word.length - 1; index++) {
+                tokens.add(word.slice(index, index + 2));
+            }
+        } else {
+            tokens.add(word);
+        }
+        if (tokens.size >= 240) break;
+    }
+    return tokens;
+}
+
+async function buildDerivedMemoryQuery(chatType, chatId, accountId) {
+    let history = [];
+    let names = [];
+    if (chatType === 'private') {
+        const char = await db.characters.get(parseInt(chatId));
+        if (char) {
+            history = getChatHistory(char, accountId);
+            names = [char.name, char.nick, getCharDisplayName(char, accountId)].filter(Boolean);
+        }
+    } else {
+        const group = await getCachedGroupChat(parseInt(chatId));
+        if (group) {
+            history = group.chat_history || [];
+            names = [group.name].filter(Boolean);
+        }
+    }
+    const recentText = (history || []).slice(-16).map(message => {
+        const content = message?.content ?? message?.message ?? '';
+        if (Array.isArray(content)) return content.filter(part => part?.type === 'text').map(part => part.text || '').join(' ');
+        return typeof content === 'string' ? content : '';
+    }).join(' ');
+    return `${names.join(' ')} ${recentText}`.slice(-6000);
+}
+
+function scoreDerivedMemoryItem(item, queryTokens, now) {
+    if (!item || item.status === 'superseded' || item.status === 'cancelled') return -Infinity;
+    const itemText = [
+        item.content,
+        item.subject,
+        item.predicate,
+        item.object,
+        ...(item.entities || []),
+        ...(item.keywords || [])
+    ].filter(Boolean).join(' ');
+    const itemTokens = tokenizeMemoryQuery(itemText);
+    let overlap = 0;
+    for (const token of queryTokens) if (itemTokens.has(token)) overlap++;
+
+    const importance = Math.max(1, Math.min(5, Number(item.importance) || 2));
+    const ageDays = Math.max(0, (now - Number(item.eventEndTime || item.createdAt || now)) / 86400000);
+    const recency = Math.max(0, 12 - Math.log2(ageDays + 1) * 2);
+    const kindWeight = {
+        core_fact: 12,
+        relationship: 11,
+        plan: item.status === 'active' ? 13 : 5,
+        preference: 9,
+        world_event: 7,
+        episodic: 6,
+        summary: 1
+    }[item.kind] || 0;
+    return (item.pinned ? 1000 : 0) + overlap * 18 + importance * 7 + recency + kindWeight + (Number(item.confidence) || 0) * 3;
+}
+
+function formatDerivedMemoryItem(item) {
+    const labels = {
+        core_fact: '核心事实',
+        relationship: '关系状态',
+        world_event: '世界事件',
+        episodic: '重要经历',
+        plan: item.status === 'completed' ? '已完成计划' : '进行中计划',
+        preference: '偏好习惯',
+        summary: '历史摘要'
+    };
+    const time = Number(item.eventStartTime || item.createdAt || 0);
+    const timeText = time ? ` (${formatSummaryTime(time)})` : '';
+    return `- [${labels[item.kind] || '记忆'}]${timeText} ${String(item.content || '').trim()}`;
+}
+
+function buildBudgetedDerivedMemoryContext(items, budget) {
+    const lines = [];
+    let used = 0;
+    for (const item of items) {
+        let line = formatDerivedMemoryItem(item);
+        if (!line.trim()) continue;
+        const remaining = budget - used;
+        if (remaining <= 0) break;
+        if (line.length > remaining) {
+            if (lines.length === 0 && remaining >= 120) lines.push(`${line.slice(0, remaining - 1)}…`);
+            break;
+        }
+        lines.push(line);
+        used += line.length + 1;
+    }
+    return lines.join('\n');
+}
+
+async function queryDerivedMemoryItems(chatType, chatId, accountId) {
+    if (!db.memory_items) return [];
+    const normalizedAccountId = String(accountId || 'offline');
+    const normalizedChatId = String(chatId);
+    const sharedScope = await resolveSummaryMemoryScope(chatType, normalizedChatId, normalizedAccountId);
+    const legacyScope = `legacy:${normalizedAccountId}:${chatType}:${normalizedChatId}`;
+    const scopes = Array.from(new Set([sharedScope, legacyScope]));
+    const batches = await Promise.all(scopes.map(scope =>
+        db.memory_items.where('memoryScopeId').equals(scope).toArray()
+    ));
+    const unique = new Map();
+    for (const item of batches.flat()) unique.set(item.id ?? item.sourceKey, item);
+    return Array.from(unique.values());
+}
+
+async function getDerivedMemoryContext(chatType, chatId, accountId) {
+    const items = await queryDerivedMemoryItems(chatType, chatId, accountId);
+    if (items.length === 0) return '';
+    const query = await buildDerivedMemoryQuery(chatType, chatId, accountId);
+    const queryTokens = tokenizeMemoryQuery(query);
+    const now = Date.now();
+    const ranked = items
+        .map(item => ({ item, score: scoreDerivedMemoryItem(item, queryTokens, now) }))
+        .filter(entry => Number.isFinite(entry.score))
+        .sort((a, b) => b.score - a.score || Number(b.item.eventEndTime || 0) - Number(a.item.eventEndTime || 0));
+    const seenFactKeys = new Set();
+    const deduplicated = ranked.map(entry => entry.item).filter(item => {
+        if (!item.factKey) return true;
+        if (seenFactKeys.has(item.factKey)) return false;
+        seenFactKeys.add(item.factKey);
+        return true;
+    });
+    return buildBudgetedDerivedMemoryContext(deduplicated, getMemoryRetrievalBudget());
+}
+
 // 显示收藏页面
 async function showFavoritesPage() {
     const page = document.getElementById('favorites-page');
@@ -46272,7 +50871,7 @@ async function renderFavoritesList(type) {
     }
     
     // 获取所有总结
-    let summaries = await db.chat_summaries.where('accountId').equals(accountId).toArray();
+    let summaries = await queryVisibleSummariesForAccount(accountId);
     
     // 按时间倒序
     summaries.sort((a, b) => b.time - a.time);
@@ -46333,36 +50932,40 @@ async function renderFavoritesList(type) {
     listContainer.innerHTML = html;
 }
 
-// 🔧 获取总结记忆上下文（注入到AI系统提示词中，让AI能读取历史总结）
-// 🔧 优化：全量注入所有总结记忆，不做截断
+// 获取总结记忆上下文：默认继续返回旧版全量总结，同时运行预算检索影子计算。
+// 只有显式启用 memory_retrieval_v2_enabled 后，新检索结果才会接管；失败始终回退旧版。
 async function getSummaryMemoryContext(chatType, chatId, accountId) {
     try {
         if (!accountId) accountId = 'offline';
-        
-        let summaries = await db.chat_summaries
-            .where(['accountId', 'chatType', 'chatId'])
-            .equals([accountId, chatType, String(chatId)])
-            .toArray();
-        
-        // 如果复合索引不工作，使用过滤
-        if (summaries.length === 0) {
-            summaries = await db.chat_summaries.where('accountId').equals(accountId).toArray();
-            summaries = summaries.filter(s => s.chatType === chatType && String(s.chatId) === String(chatId));
-        }
+
+        const summaries = await queryChatSummaries(chatType, chatId, accountId);
         
         if (summaries.length === 0) return '';
         
-        // 按时间正序排列（从旧到新）
-        summaries.sort((a, b) => a.time - b.time);
+        // 优先按事件发生时间排列；旧记录没有 startTime 时回退创建时间。
+        summaries.sort((a, b) => (a.startTime || a.time || 0) - (b.startTime || b.time || 0));
         
         const memoryLines = summaries.map(s => {
-            const timeStr = formatSummaryTime(s.time);
+            const timeStr = formatSummaryTime(s.startTime || s.time);
             const content = (s.content || '').replace(/【关键词】.*$/m, '').trim();
             return `- (${timeStr}) ${content}`;
         }).join('\n');
         
-        console.log(`[getSummaryMemoryContext] 全量加载 ${summaries.length} 条总结记忆`);
-        
+        console.log(`[getSummaryMemoryContext] 已加载 ${summaries.length} 条兼容总结记忆`);
+
+        if (isMemoryIndexV2Enabled()) {
+            try {
+                const derivedContext = await getDerivedMemoryContext(chatType, chatId, accountId);
+                if (isMemoryRetrievalV2Enabled() && derivedContext) {
+                    console.log(`[MemoryIndexV2] 已启用预算检索：${derivedContext.length}/${getMemoryRetrievalBudget()} 字符`);
+                    return derivedContext;
+                }
+                console.log(`[MemoryIndexV2] 影子检索完成：候选上下文 ${derivedContext.length} 字符，当前仍使用旧总结`);
+            } catch (derivedError) {
+                console.warn('[MemoryIndexV2] 检索失败，已回退旧总结:', derivedError);
+            }
+        }
+
         return `${memoryLines}`;
     } catch (e) {
         console.warn('[getSummaryMemoryContext] 获取总结记忆失败:', e);
@@ -46543,7 +51146,7 @@ async function deleteSummary() {
     if (!confirm('确定要删除这条总结吗？')) return;
     
     try {
-        await db.chat_summaries.delete(currentViewingSummaryId);
+        await deleteChatSummaryWithDerivedIndex(currentViewingSummaryId);
         hideSummaryDetailPage();
         
         // 刷新收藏列表
@@ -46654,6 +51257,13 @@ async function saveSummaryEdit() {
         
         // 保存到数据库
         await db.chat_summaries.put(summary);
+        // 旧总结保存成功后再刷新可重建索引；索引失败不回滚用户编辑。
+        Promise.resolve()
+            .then(async () => {
+                await removeDerivedMemoryForSummaryIds([summary.id]);
+                await indexSummaryMemory(summary, { structured: true });
+            })
+            .catch(error => console.warn('[MemoryIndexV2] 编辑后刷新索引失败:', error));
         
         // 更新显示
         const contentDiv = document.getElementById('summary-detail-content');
@@ -46723,20 +51333,8 @@ async function showChatSummaries(chatType) {
     try {
         // 获取该聊天的所有总结
         console.log('[showChatSummaries] 开始查询总结, chatId:', chatId, 'chatType:', chatType);
-        let summaries = await db.chat_summaries
-            .where(['accountId', 'chatType', 'chatId'])
-            .equals([accountId, chatType, String(chatId)])
-            .toArray();
-        
-        console.log('[showChatSummaries] 复合索引查询结果:', summaries.length);
-        
-        // 如果复合索引不工作，使用过滤
-        if (summaries.length === 0) {
-            console.log('[showChatSummaries] 复合索引无结果，使用过滤方式');
-            summaries = await db.chat_summaries.where('accountId').equals(accountId).toArray();
-            summaries = summaries.filter(s => s.chatType === chatType && String(s.chatId) === String(chatId));
-            console.log('[showChatSummaries] 过滤后结果:', summaries.length);
-        }
+        let summaries = await queryChatSummaries(chatType, chatId, accountId);
+        console.log('[showChatSummaries] 兼容查询结果:', summaries.length);
         
         // 按时间正序（第一次总结排第一，后面的依次排列）
         summaries.sort((a, b) => a.time - b.time);
@@ -46951,7 +51549,7 @@ async function confirmSummaryRange() {
 }
 
 // 生成聊天总结
-async function generateChatSummary(chatType, chatId, accountId, chatHistory) {
+async function generateChatSummary(chatType, chatId, accountId, chatHistory, options = {}) {
     // 🔧 修复：直接使用用户选择的全部消息，不再截断
     const allMessages = chatHistory;
     
@@ -47135,20 +51733,31 @@ ${chatContent}`;
     }
     
     // 保存到数据库
+    const normalizedAccountId = accountId ? String(accountId) : 'offline';
+    const memoryScopeId = await resolveSummaryMemoryScope(chatType, chatId, normalizedAccountId);
+    const sourceMessageIds = allMessages
+        .map(message => message.messageId || getChatMessageCursorFingerprint(message))
+        .filter(Boolean);
     const summaryData = {
-        accountId: accountId,
+        accountId: normalizedAccountId,
         chatType: chatType,
         chatId: String(chatId),
         time: Date.now(),
+        createdAt: Date.now(),
         content: content,
         messageCount: allMessages.length,
         timeRange: timeRange,
         keywords: keywords,
         startTime: firstMsgTime,
-        endTime: lastMsgTime
+        endTime: lastMsgTime,
+        eventStartTime: firstMsgTime,
+        eventEndTime: lastMsgTime,
+        sourceType: options.sourceType || 'manual',
+        memoryScopeId,
+        sourceMessageIds
     };
     
-    await db.chat_summaries.add(summaryData);
+    summaryData.id = await addChatSummaryWithDerivedIndex(summaryData, { structured: true });
     
     return summaryData;
 }
@@ -47196,8 +51805,7 @@ async function updateSummaryCount(chatType, chatId, accountId) {
         console.log('[updateSummaryCount] 线下模式，使用默认账号ID: offline');
     }
     
-    let summaries = await db.chat_summaries.where('accountId').equals(accountId).toArray();
-    summaries = summaries.filter(s => s.chatType === chatType && String(s.chatId) === String(chatId));
+    const summaries = await queryChatSummaries(chatType, chatId, accountId);
     
     const count = summaries.length;
     
@@ -47210,72 +51818,147 @@ async function updateSummaryCount(chatType, chatId, accountId) {
     }
 }
 
+const _autoSummaryLocks = new Map();
+
+function getAutoSummaryCursorStorageKey(memoryScopeId) {
+    return `memory_cursor_v2:${memoryScopeId}`;
+}
+
+async function loadOrInitializeAutoSummaryCursor(chatType, chatId, accountId, memoryScopeId) {
+    const storageKey = getAutoSummaryCursorStorageKey(memoryScopeId);
+    const existing = await db.dexiData.get(storageKey);
+    if (existing?.value) return existing.value;
+
+    // 旧记录没有 sourceType，视为 legacy 自动总结候选；手动总结和事件记忆不推进新游标。
+    const summaries = await queryChatSummaries(chatType, chatId, accountId);
+    const compatibleSummaries = summaries.filter(summary =>
+        Number(summary.messageCount || 0) > 0 &&
+        Number(summary.endTime || 0) > 0 &&
+        (!summary.sourceType || summary.sourceType === 'legacy' || summary.sourceType === 'auto')
+    );
+    const lastProcessedTime = compatibleSummaries.reduce(
+        (maxTime, summary) => Math.max(maxTime, Number(summary.endTime || 0)),
+        0
+    );
+    const cursor = {
+        version: 2,
+        memoryScopeId,
+        chatType,
+        chatId: String(chatId),
+        accountId: String(accountId || 'offline'),
+        lastProcessedTime,
+        lastProcessedMessageId: null,
+        lastProcessedFingerprint: null,
+        initializedAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    await db.dexiData.put({ key: storageKey, value: cursor });
+    return cursor;
+}
+
+async function saveAutoSummaryCursor(memoryScopeId, cursor) {
+    await db.dexiData.put({
+        key: getAutoSummaryCursorStorageKey(memoryScopeId),
+        value: { ...cursor, version: 2, memoryScopeId, updatedAt: Date.now() }
+    });
+}
+
+function getMessagesAfterSummaryCursor(chatHistory, cursor) {
+    if (!Array.isArray(chatHistory) || chatHistory.length === 0) return [];
+    if (cursor?.lastProcessedFingerprint) {
+        for (let index = chatHistory.length - 1; index >= 0; index--) {
+            if (getChatMessageCursorFingerprint(chatHistory[index]) === cursor.lastProcessedFingerprint) {
+                return chatHistory.slice(index + 1);
+            }
+        }
+    }
+    const lastProcessedTime = Number(cursor?.lastProcessedTime || 0);
+    return chatHistory.filter(message => Number(message.time || message.timestamp || 0) > lastProcessedTime);
+}
+
 // 检查是否需要自动总结（在发送消息后调用）
 async function checkAutoSummary(chatType, chatId, accountId) {
     const rawAccountId = accountId; // 保留原始值用于线下记录key
-    if (!accountId) {
-        accountId = 'offline';
+    const normalizedAccountId = accountId ? String(accountId) : 'offline';
+    const memoryScopeId = await resolveSummaryMemoryScope(chatType, chatId, normalizedAccountId);
+    const lockKey = `${chatType}:${String(chatId)}:${memoryScopeId}`;
+
+    if (_autoSummaryLocks.has(lockKey)) {
+        console.log('[AutoSummary] 已有同作用域总结任务，跳过重复检查:', lockKey);
+        return _autoSummaryLocks.get(lockKey);
     }
-    
-    let autoSummaryEnabled = false;
-    let summaryInterval = 50;
-    let chatHistory = [];
-    
-    if (chatType === 'private') {
-        const char = await db.characters.get(parseInt(chatId));
-        if (!char) return;
-        autoSummaryEnabled = char.auto_summary_enabled;
-        summaryInterval = char.summary_interval || 50;
-        chatHistory = getChatHistory(char, rawAccountId);
-        
-        // 🔧 合并线下模式聊天记录（线下记录也要一起计数和总结）
-        try {
-            if (rawAccountId) {
-                const offlineHistory = await loadOfflineChatHistory(rawAccountId, chatId);
-                if (offlineHistory && offlineHistory.length > 0) {
-                    // ✅ 添加线下来源标记，让总结能区分线上/线下消息
-                    const taggedOffline = offlineHistory.map(m => ({ ...m, _source: 'offline' }));
-                    chatHistory = [...chatHistory, ...taggedOffline];
-                    chatHistory.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
-                    console.log(`[checkAutoSummary] 合并线下记录 ${offlineHistory.length} 条，总计 ${chatHistory.length} 条`);
+
+    const task = (async () => {
+        let autoSummaryEnabled = false;
+        let summaryInterval = 50;
+        let chatHistory = [];
+
+        if (chatType === 'private') {
+            const char = await db.characters.get(parseInt(chatId));
+            if (!char) return;
+            autoSummaryEnabled = char.auto_summary_enabled;
+            summaryInterval = char.summary_interval || 50;
+            chatHistory = getChatHistory(char, rawAccountId);
+
+            try {
+                if (rawAccountId) {
+                    const offlineHistory = await loadOfflineChatHistory(rawAccountId, chatId);
+                    if (offlineHistory && offlineHistory.length > 0) {
+                        const taggedOffline = offlineHistory.map(message => ({ ...message, _source: 'offline' }));
+                        chatHistory = [...chatHistory, ...taggedOffline];
+                        chatHistory.sort((a, b) => (a.time || a.timestamp || 0) - (b.time || b.timestamp || 0));
+                        console.log(`[checkAutoSummary] 合并线下记录 ${offlineHistory.length} 条，总计 ${chatHistory.length} 条`);
+                    }
                 }
+            } catch (e) {
+                console.warn('[checkAutoSummary] 读取线下记录失败:', e);
             }
-        } catch (e) {
-            console.warn('[checkAutoSummary] 读取线下记录失败:', e);
+        } else if (chatType === 'group') {
+            const group = await getCachedGroupChat(parseInt(chatId));
+            if (!group) return;
+            autoSummaryEnabled = group.auto_summary_enabled;
+            summaryInterval = group.summary_interval || 50;
+            chatHistory = group.chat_history || [];
         }
-    } else if (chatType === 'group') {
-        const group = await getCachedGroupChat(parseInt(chatId));
-        if (!group) return;
-        autoSummaryEnabled = group.auto_summary_enabled;
-        summaryInterval = group.summary_interval || 50;
-        chatHistory = group.chat_history || [];
-    }
-    
-    if (!autoSummaryEnabled) return;
-    
-    // 获取上次总结后的消息数
-    let summaries = await db.chat_summaries.where('accountId').equals(accountId).toArray();
-    summaries = summaries.filter(s => s.chatType === chatType && String(s.chatId) === String(chatId));
-    summaries.sort((a, b) => b.time - a.time);
-    
-    const lastSummary = summaries[0];
-    const lastSummaryTime = lastSummary ? lastSummary.endTime : 0;
-    
-    // 统计上次总结后的消息数
-    const newMessages = chatHistory.filter(msg => {
-        const msgTime = msg.time || msg.timestamp || 0;
-        return msgTime > lastSummaryTime;
-    });
-    
-    // 如果达到阈值，自动生成总结
-    if (newMessages.length >= summaryInterval) {
-        console.log(`[AutoSummary] 达到阈值 ${summaryInterval}，自动生成总结`);
-        try {
-            await generateChatSummary(chatType, chatId, accountId, newMessages);
+
+        if (!autoSummaryEnabled) return;
+
+        const cursor = await loadOrInitializeAutoSummaryCursor(
+            chatType,
+            chatId,
+            normalizedAccountId,
+            memoryScopeId
+        );
+        const newMessages = getMessagesAfterSummaryCursor(chatHistory, cursor);
+
+        if (newMessages.length >= summaryInterval) {
+            console.log(`[AutoSummary] 达到阈值 ${summaryInterval}，自动生成总结`);
+            const summary = await generateChatSummary(
+                chatType,
+                chatId,
+                normalizedAccountId,
+                newMessages,
+                { sourceType: 'auto' }
+            );
+            const lastMessage = newMessages[newMessages.length - 1];
+            await saveAutoSummaryCursor(memoryScopeId, {
+                ...cursor,
+                lastProcessedTime: Number(lastMessage?.time || lastMessage?.timestamp || summary.endTime || 0),
+                lastProcessedMessageId: lastMessage?.messageId || null,
+                lastProcessedFingerprint: getChatMessageCursorFingerprint(lastMessage),
+                lastSummaryId: summary.id || null
+            });
             showToast('已自动生成聊天总结');
-        } catch (e) {
-            console.error('[AutoSummary] 自动总结失败:', e);
         }
+    })();
+
+    _autoSummaryLocks.set(lockKey, task);
+    try {
+        return await task;
+    } catch (e) {
+        console.error('[AutoSummary] 自动总结失败:', e);
+    } finally {
+        _autoSummaryLocks.delete(lockKey);
     }
 }
 
@@ -52677,6 +57360,98 @@ async function executeUseImageAsAvatar(charId, accountId, imageIndex) {
     }
 }
 
+function collectRecentUserImagesForPhonePersonalization(char, accountId) {
+    const history = getChatHistory(char, accountId);
+    const images = [];
+    for (let index = history.length - 1; index >= 0; index--) {
+        const message = history[index];
+        if (message?.role !== 'user' || typeof message.content !== 'string') continue;
+        if (!message.content.startsWith('[img:') || !message.content.endsWith(']')) continue;
+        if (message.isSticker || message.imageDescription) continue;
+        const url = message.content.substring(5, message.content.length - 1);
+        if (!url) continue;
+        images.push({ url, messageIndex: index, messageTime: message.time || Date.now() });
+    }
+    return images;
+}
+
+// 只修改角色“查手机”里的私人外观；绝不写入普通聊天的 chat_background 或用户主桌面设置。
+async function executeUseImageAsRolePhoneAppearance(charId, accountId, imageIndex, target) {
+    const char = await db.characters.get(charId);
+    if (!char) return false;
+    if (!char.allow_auto_avatar && !char.allow_autonomous_activity) return false;
+
+    const ownerAccountId = String(accountId || getCurrentAccountId() || 'default');
+    const userImages = collectRecentUserImagesForPhonePersonalization(char, accountId);
+    if (!userImages.length) {
+        console.warn('[角色手机个性化] 没有找到用户发送的真实图片');
+        return false;
+    }
+
+    const selectedIndex = Math.max(0, Math.min((Number(imageIndex) || 1) - 1, userImages.length - 1));
+    const selectedImage = userImages[selectedIndex];
+    const now = Date.now();
+    const metaByUser = { ...(char.fp_phone_personalization_meta_by_user || {}) };
+    const ownerMeta = { ...(metaByUser[ownerAccountId] || {}) };
+
+    if (target === 'chat_background') {
+        const backgrounds = { ...(char.fp_chat_background_by_user || {}) };
+        if (backgrounds[ownerAccountId] === selectedImage.url) return true;
+        backgrounds[ownerAccountId] = selectedImage.url;
+        ownerMeta.chatBackground = {
+            sourceMessageIndex: selectedImage.messageIndex,
+            sourceMessageTime: selectedImage.messageTime,
+            updatedAt: now
+        };
+        metaByUser[ownerAccountId] = ownerMeta;
+        await safeDexieUpdate(db.characters, charId, {
+            fp_chat_background_by_user: backgrounds,
+            fp_phone_personalization_meta_by_user: metaByUser
+        }, `角色手机聊天背景[${char.name}]`);
+
+        const freshChar = await db.characters.get(charId);
+        if (freshChar && window._fpChatMode && String(window._fpRoleCharId) === String(charId)) {
+            applyChatBackground(freshChar);
+        }
+        await logCharacterActivity(charId, '把你发的图片设成了自己的手机聊天背景');
+        showToast(`${char.name} 把图片设成了自己的手机聊天背景`);
+        return true;
+    }
+
+    if (target === 'desktop_wallpaper') {
+        const wallpapers = { ...(char.fp_desktop_wallpaper_by_user || {}) };
+        if (wallpapers[ownerAccountId] === selectedImage.url) return true;
+        wallpapers[ownerAccountId] = selectedImage.url;
+        const desktopPlan = JSON.parse(JSON.stringify(getFindPhoneStoredDesktopPlan(char) || getFindPhoneFallbackPlan(char)));
+        desktopPlan.wallpaper = { mode: 'role_image', ownerAccountId };
+        desktopPlan.reason = `${char.name}根据自己的审美使用了聊天中收到的图片作为手机壁纸`;
+
+        ownerMeta.desktopWallpaper = {
+            sourceMessageIndex: selectedImage.messageIndex,
+            sourceMessageTime: selectedImage.messageTime,
+            updatedAt: now
+        };
+        metaByUser[ownerAccountId] = ownerMeta;
+        await safeDexieUpdate(db.characters, charId, {
+            fp_desktop_wallpaper_by_user: wallpapers,
+            fp_phone_personalization_meta_by_user: metaByUser
+        }, `角色手机桌面壁纸[${char.name}]`);
+
+        const freshChar = await db.characters.get(charId);
+        if (!saveFindPhoneDesktopPlan(freshChar || char, desktopPlan)) {
+            throw new Error('角色手机壁纸方案保存失败');
+        }
+        if (freshChar) {
+            await refreshVisibleFindPhoneDesktopAfterAutonomy(freshChar, desktopPlan, new Map());
+        }
+        await logCharacterActivity(charId, '把你发的图片设成了自己的手机桌面壁纸');
+        showToast(`${char.name} 把图片设成了自己的手机桌面壁纸`);
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * 角色裁剪用户发送的图片的局部区域作为头像
  * AI 通过识图后指定裁剪区域的百分比坐标，用 Canvas 裁剪出局部当头像
@@ -52871,6 +57646,7 @@ window.acceptCoupleAvatar = acceptCoupleAvatar;
 window.declineCoupleAvatar = declineCoupleAvatar;
 window.executeRevertCoupleAvatar = executeRevertCoupleAvatar;
 window.executeUseImageAsAvatar = executeUseImageAsAvatar;
+window.executeUseImageAsRolePhoneAppearance = executeUseImageAsRolePhoneAppearance;
 
 // ============================================
 // 饿美了外卖系统
@@ -55042,7 +59818,7 @@ async function moqiSendDrawingToFriend(charId) {
     try {
         const char = await db.characters.get(charId);
         if (!char) return;
-        const history = char.chat_history_by_user?.[accountId] || char.chat_history || [];
+        const history = getChatHistory(char, accountId);
         // 用 [img:...] 格式，让聊天渲染器能识别为图片
         const newMsg = {
             role: 'user',
@@ -55050,9 +59826,7 @@ async function moqiSendDrawingToFriend(charId) {
             timestamp: Date.now()
         };
         history.push(newMsg);
-        if (!char.chat_history_by_user) char.chat_history_by_user = {};
-        char.chat_history_by_user[accountId] = history;
-        await safeCharacterPut(char);
+        await setChatHistory(char, accountId, history);
         // 追加到聊天 UI
         if (typeof window._appendShopCardToChat === 'function') {
             window._appendShopCardToChat(charId, newMsg);
@@ -55134,18 +59908,11 @@ async function moqiSendDrawingToFriend(charId) {
     }
 
     function _getChatHistory(char, accountId) {
-        if (!accountId) return char.chat_history || [];
-        return char.chat_history_by_user?.[accountId] || [];
+        return getChatHistory(char, accountId);
     }
 
     async function _setChatHistory(char, accountId, history) {
-        if (!accountId) {
-            char.chat_history = history;
-        } else {
-            if (!char.chat_history_by_user) char.chat_history_by_user = {};
-            char.chat_history_by_user[accountId] = history;
-        }
-        await safeCharacterPut(char);
+        await setChatHistory(char, accountId, history);
     }
 
     // 获取好友列表
@@ -56463,7 +61230,7 @@ async function moqiSendDrawingToFriend(charId) {
         });
 
         // 发送卡片消息到私聊（用户发出的邀请卡片）
-        const chatHist = targetChar.chat_history_by_user?.[accountId] || targetChar.chat_history || [];
+        const chatHist = getChatHistory(targetChar, accountId);
         chatHist.push({
             role: 'user',
             type: 'intimateRequest',
@@ -56515,7 +61282,7 @@ async function moqiSendDrawingToFriend(charId) {
             const charLore = await getLorebookContext(charLbIds, keywords);
 
             // 获取聊天记录摘要（过滤掉卡片类消息）
-            const chatHistory = targetChar.chat_history_by_user?.[accountId] || targetChar.chat_history || [];
+            const chatHistory = getChatHistory(targetChar, accountId);
             const recentChat = chatHistory.filter(m => !m.type || m.type === 'text').slice(-20).map(m => `${m.role === 'user' ? userChar.name : targetChar.name}: ${(m.content || '').substring(0, 50)}`).join('\n');
 
             const prompt = `[场景: 微信亲密关系申请]
@@ -56576,7 +61343,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
             await updateIntimateCardInChat(targetChar, accountId, String(requestId), newStatus);
 
             // 角色发送回应卡片
-            const chatHist2 = targetChar.chat_history_by_user?.[accountId] || targetChar.chat_history || [];
+            const chatHist2 = getChatHistory(targetChar, accountId);
             chatHist2.push({
                 role: 'char',
                 type: 'intimateRequest',
@@ -56629,7 +61396,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
             await db.intimate_requests.update(requestId, { status: 'accepted' });
             await updateIntimateCardInChat(targetChar, accountId, String(requestId), 'accepted');
 
-            const chatHist2 = targetChar.chat_history_by_user?.[accountId] || targetChar.chat_history || [];
+            const chatHist2 = getChatHistory(targetChar, accountId);
             chatHist2.push({
                 role: 'char',
                 type: 'intimateRequest',
@@ -56670,7 +61437,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
 
     // ===== 更新聊天中的亲密关系卡片状态 =====
     async function updateIntimateCardInChat(char, accountId, requestId, newStatus) {
-        const chatHist = char.chat_history_by_user?.[accountId] || char.chat_history || [];
+        const chatHist = getChatHistory(char, accountId);
         let updated = false;
         for (let i = 0; i < chatHist.length; i++) {
             if (chatHist[i].type === 'intimateRequest') {
@@ -56778,7 +61545,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
             });
 
             // 发送系统提示
-            const chatHist = partnerChar.chat_history_by_user?.[accountId] || partnerChar.chat_history || [];
+            const chatHist = getChatHistory(partnerChar, accountId);
             chatHist.push({
                 role: 'system',
                 content: `🎉 你接受了 ${partnerName} 的「${typeInfo.emoji} ${typeInfo.name}」关系邀请，亲密关系已建立！`,
@@ -56788,7 +61555,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
 
             sendSystemNotification('亲密空间', `你已接受 ${partnerName} 的${typeInfo.name}关系邀请 ${typeInfo.emoji}`);
         } else {
-            const chatHist = partnerChar.chat_history_by_user?.[accountId] || partnerChar.chat_history || [];
+            const chatHist = getChatHistory(partnerChar, accountId);
             chatHist.push({
                 role: 'system',
                 content: `你拒绝了 ${partnerName} 的「${typeInfo.emoji} ${typeInfo.name}」关系邀请`,
@@ -56843,7 +61610,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
         });
 
         // 角色发送卡片消息到私聊
-        const chatHist = targetChar.chat_history_by_user?.[accountId] || targetChar.chat_history || [];
+        const chatHist = getChatHistory(targetChar, accountId);
         chatHist.push({
             role: 'char',
             type: 'intimateRequest',
@@ -56902,7 +61669,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
         const boardCount = (rel.messageBoard || []).length;
 
         // 计算聊天统计
-        const chatHistory = partnerChar.chat_history_by_user?.[accountId] || partnerChar.chat_history || [];
+        const chatHistory = getChatHistory(partnerChar, accountId);
         const chatCount = chatHistory.length;
 
         let html = '';
@@ -57231,7 +61998,7 @@ ${userChar.name} 在微信「亲密空间」功能中，向你发送了「${type
 
             if (reply && reply.trim()) {
                 // 发送到聊天窗口
-                const chatHist = partnerChar.chat_history_by_user?.[accountId] || partnerChar.chat_history || [];
+                const chatHist = getChatHistory(partnerChar, accountId);
                 chatHist.push(buildCharMessage(reply.trim(), !!partnerChar.foreign_lang_mode, { time: Date.now() }));
                 await setChatHistory(partnerChar, accountId, chatHist);
 
@@ -57411,7 +62178,7 @@ ${myChar?.name || '对方'}刚刚在微信亲密空间解除了你们的「${typ
                 ]);
 
                 if (reply && reply.trim()) {
-                    const chatHist = partnerChar.chat_history_by_user?.[accountId] || partnerChar.chat_history || [];
+                    const chatHist = getChatHistory(partnerChar, accountId);
                     chatHist.push({
                         role: 'system',
                         content: `你已解除与 ${partnerChar.name} 的「${typeInfo.emoji} ${typeInfo.name}」关系`,
