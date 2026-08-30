@@ -4,7 +4,7 @@
 console.log('[SW] Service Worker loaded (纯前端模式)');
 
 // 缓存名称（更新版本号以触发CDN资源缓存）
-const CACHE_NAME = 'ins-desktop-v25';
+const CACHE_NAME = 'ins-desktop-v26';
 
 // 需要缓存的资源
 const CACHE_URLS = [

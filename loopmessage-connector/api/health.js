@@ -28,7 +28,7 @@ export default async function handler(req, res) {
       inboxConfigured,
       inboxConnected,
       inboxError,
-      version: '2.0.0'
+      version: '2.1.0'
     });
   } catch (error) {
     const parsed = serializeError(error);

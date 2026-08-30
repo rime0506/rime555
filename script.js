@@ -21956,7 +21956,10 @@ async function callIMessageConnector(path, config, requestOptions = {}) {
         let payload = {};
         try { payload = await response.json(); } catch (_) {}
         if (!response.ok || payload.success === false) {
-            throw new Error(payload.error || payload.message || `连接器请求失败（HTTP ${response.status}）`);
+            throw Object.assign(
+                new Error(payload.error || payload.message || `连接器请求失败（HTTP ${response.status}）`),
+                { code: payload.code || 'IMESSAGE_CONNECTOR_ERROR', status: response.status }
+            );
         }
         return payload;
     } catch (error) {
@@ -21979,7 +21982,12 @@ async function testIMessageConnector() {
         validateIMessageFormConfig(config);
         const result = await callIMessageConnector('/api/health', config, { method: 'GET' });
         await persistIMessageFormConfig(char, config, 'connected');
-        if (result.inboxConnected) {
+        const versionParts = String(result.version || '').split('.').map(value => Number(value) || 0);
+        const supportsSingleConsumerLease = versionParts[0] > 2 || (versionParts[0] === 2 && versionParts[1] >= 1);
+        if (result.inboxConnected && !supportsSingleConsumerLease) {
+            setIMessageStatus('连接器版本过旧', 'loading');
+            showToast('⚠️ 请在 Vercel 重新部署最新版连接器，旧版会造成防抖重复调用');
+        } else if (result.inboxConnected) {
             setIMessageStatus('发送和自动回复均可用', 'success');
             showToast('✅ iMessage 发送和入站队列连接成功');
         } else {
@@ -22030,6 +22038,24 @@ async function setStoredIMessageHistory(char, accountId, history) {
     }
 }
 
+async function appendStoredIMessageHistoryMessage(char, accountId, message) {
+    const accountKey = String(accountId || '__legacy__');
+    let appended = false;
+    await db.transaction('rw', db.characters, async () => {
+        const freshChar = await db.characters.get(char.id) || char;
+        const historyMap = { ...(freshChar.imessage_history_by_user || {}) };
+        const history = [...(historyMap[accountKey] || [])];
+        const messageKey = getIMessageHistoryMessageKey(message);
+        if (history.some(item => getIMessageHistoryMessageKey(item) === messageKey)) return;
+        history.push(message);
+        history.sort((a, b) => Number(a?.time || 0) - Number(b?.time || 0));
+        historyMap[accountKey] = history;
+        await db.characters.update(char.id, { imessage_history_by_user: historyMap });
+        appended = true;
+    });
+    return appended;
+}
+
 async function migrateLegacyIMessageHistoryForCharacter(char, accountId) {
     const freshChar = await db.characters.get(char.id) || char;
     const wechatHistory = [...getChatHistory(freshChar, accountId)];
@@ -22072,9 +22098,8 @@ async function migrateAllLegacyIMessageHistories() {
 }
 
 async function appendSentIMessageToChat(char, text, result, clientMessageId, accountId = getCurrentAccountId(), sourceWebhookIds = []) {
-    const freshChar = await migrateLegacyIMessageHistoryForCharacter(char, accountId);
-    const history = [...getStoredIMessageHistory(freshChar, accountId)];
-    history.push({
+    await migrateLegacyIMessageHistoryForCharacter(char, accountId);
+    await appendStoredIMessageHistoryMessage(char, accountId, {
         role: 'char',
         content: text,
         time: Date.now(),
@@ -22086,7 +22111,6 @@ async function appendSentIMessageToChat(char, text, result, clientMessageId, acc
         clientMessageId,
         sourceWebhookIds: Array.isArray(sourceWebhookIds) ? sourceWebhookIds : []
     });
-    await setStoredIMessageHistory(freshChar, accountId, history);
     if (currentChatCharId === char.id) await renderIMessageHistoryPage();
 }
 
@@ -22212,7 +22236,7 @@ function sanitizeIMessageVisibleText(value) {
     return text;
 }
 
-async function sendCharacterIMessageTextWithConfig(char, text, config, accountId = getCurrentAccountId(), sourceWebhookIds = []) {
+async function sendCharacterIMessageTextWithConfig(char, text, config, accountId = getCurrentAccountId(), sourceWebhookIds = [], consumerId = '') {
     validateIMessageFormConfig(config, { requireBinding: true });
 
     const cleanText = sanitizeIMessageVisibleText(String(text || '').replace(/\s*\|\|\|\s*/g, ' '));
@@ -22226,7 +22250,8 @@ async function sendCharacterIMessageTextWithConfig(char, text, config, accountId
             senderId: config.senderId || undefined,
             recipient: config.recipient,
             text: cleanText,
-            clientMessageId
+            clientMessageId,
+            consumerId: consumerId || undefined
         })
     });
     await appendSentIMessageToChat(char, cleanText, result, clientMessageId, accountId, sourceWebhookIds);
@@ -22419,7 +22444,7 @@ function waitBeforeNextIMessage(delayMs = 650) {
     return new Promise(resolve => setTimeout(resolve, delayMs));
 }
 
-async function sendCharacterIMessageSegmentsWithConfig(char, segments, config, accountId = getCurrentAccountId(), sourceWebhookIds = [], startIndex = 0, onProgress = null, shouldContinue = null) {
+async function sendCharacterIMessageSegmentsWithConfig(char, segments, config, accountId = getCurrentAccountId(), sourceWebhookIds = [], startIndex = 0, onProgress = null, shouldContinue = null, consumerId = '') {
     const messages = Array.isArray(segments) ? segments.map(sanitizeIMessageVisibleText).filter(Boolean) : [];
     if (!messages.length) throw new Error('没有可发送的消息内容');
     for (let index = startIndex; index < messages.length; index += 1) {
@@ -22427,7 +22452,7 @@ async function sendCharacterIMessageSegmentsWithConfig(char, segments, config, a
             throw Object.assign(new Error('这批 iMessage 回复已取消'), { code: 'IMESSAGE_BATCH_CANCELLED' });
         }
         const isLast = index === messages.length - 1;
-        await sendCharacterIMessageTextWithConfig(char, messages[index], config, accountId, isLast ? sourceWebhookIds : []);
+        await sendCharacterIMessageTextWithConfig(char, messages[index], config, accountId, isLast ? sourceWebhookIds : [], consumerId);
         if (typeof onProgress === 'function') onProgress(index + 1, messages.length);
         if (!isLast) await waitBeforeNextIMessage();
     }
@@ -22499,11 +22524,25 @@ window.clearAllIMessageHistory = clearAllIMessageHistory;
 // ==================== LoopMessage 入站自动回复（网页在线模式） ====================
 const loopMessagePendingConversations = new Map();
 const loopMessageAutoReplyStates = new Map();
+let loopMessageConsumerIdFallback = '';
 let loopMessageGlobalAutoReplyState = null;
 let loopMessageInboxPollInFlight = false;
 let loopMessageInboxPollTimer = null;
 let loopMessageInboxNextPollAt = 0;
 let loopMessageInboxErrorCount = 0;
+
+function getLoopMessageInboxConsumerId() {
+    if (loopMessageConsumerIdFallback) return loopMessageConsumerIdFallback;
+    const randomPart = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+    loopMessageConsumerIdFallback = `web_${randomPart}`;
+    return loopMessageConsumerIdFallback;
+}
+
+function getLoopMessageInboxPath(limit = 100) {
+    return `/api/inbox?limit=${Math.max(1, Math.min(100, Number(limit) || 100))}&consumerId=${encodeURIComponent(getLoopMessageInboxConsumerId())}`;
+}
 
 function getLoopMessageRuntimeTone(tone) {
     const tones = {
@@ -22631,10 +22670,8 @@ async function findCharacterForLoopMessageInbound(event, accountId, connectorCon
 }
 
 async function appendInboundIMessageToChat(char, event, accountId) {
-    const freshChar = await migrateLegacyIMessageHistoryForCharacter(char, accountId);
-    const history = [...getStoredIMessageHistory(freshChar, accountId)];
-    if (history.some(message => message.providerWebhookId === event.webhookId)) return false;
-    history.push({
+    await migrateLegacyIMessageHistoryForCharacter(char, accountId);
+    const appended = await appendStoredIMessageHistoryMessage(char, accountId, {
         role: 'user',
         content: String(event.text || '').trim(),
         time: Number(event.receivedAt) || Date.now(),
@@ -22645,9 +22682,8 @@ async function appendInboundIMessageToChat(char, event, accountId) {
         providerWebhookId: event.webhookId,
         providerSenderId: event.sender || null
     });
-    await setStoredIMessageHistory(freshChar, accountId, history);
     if (currentChatCharId === char.id) await renderIMessageHistoryPage();
-    return true;
+    return appended;
 }
 
 async function wasLoopMessageBatchAlreadyReplied(char, accountId, webhookId) {
@@ -22775,7 +22811,8 @@ async function processLoopMessageConversation(key) {
                 activeBatch.nextIndex = sentCount;
                 setLoopMessageAutoReplyRuntimeStatus(entry.charId, `正在发送 iMessage · ${sentCount}/${messageCount}`, 'sending', sentCount === messageCount ? '全部消息已发出，正在确认入站事件。' : '正在发送下一条…');
             },
-            () => !activeBatch.cancelled
+            () => !activeBatch.cancelled,
+            getLoopMessageInboxConsumerId()
         );
         try {
             await acknowledgeLoopMessageEvents(connectorConfig, activeBatch.webhookIds);
@@ -22793,6 +22830,13 @@ async function processLoopMessageConversation(key) {
             entry.activeBatch = null;
             entry.attempts = 0;
             setLoopMessageAutoReplyRuntimeStatus(entry.charId, entry.events.size ? '已忘记删除的消息 · 准备重新生成' : '已忘记删除的消息', 'listening', entry.events.size ? '只会使用剩余的聊天记录重新回复。' : '这条消息不会再进入 AI 上下文。');
+            return;
+        }
+        if (error?.code === 'INBOX_LEASE_LOST') {
+            entry.stopped = true;
+            entry.activeBatch = null;
+            loopMessagePendingConversations.delete(key);
+            setLoopMessageAutoReplyRuntimeStatus(entry.charId, '已切换到另一个监听页面', 'listening', '当前页面已停止发送，避免产生第二批重复回复。');
             return;
         }
         entry.attempts = Number(entry.attempts || 0) + 1;
@@ -22816,7 +22860,14 @@ async function processLoopMessageConversation(key) {
 }
 
 async function queueLoopMessageInboundForReply(route, event, accountId) {
-    const key = `${accountId || '__legacy__'}:${route.char.id}:${event.contact}:${event.sender || ''}`;
+    const senderScope = route.config.mode === 'dedicated' ? route.config.senderId : 'shared';
+    const key = [
+        accountId || '__legacy__',
+        route.char.id,
+        route.config.connectorUrl,
+        route.config.recipient,
+        senderScope
+    ].join(':');
     let entry = loopMessagePendingConversations.get(key);
     if (!entry) {
         entry = {
@@ -22880,7 +22931,15 @@ async function pollLoopMessageInbox() {
         const groupErrors = [];
         for (const group of connectorGroups.values()) {
             try {
-                const payload = await callIMessageConnector('/api/inbox?limit=100', group.connectorConfig, { method: 'GET' });
+                const payload = await callIMessageConnector(getLoopMessageInboxPath(100), group.connectorConfig, { method: 'GET' });
+                if (payload.leaseAcquired === false) {
+                    group.characters.forEach(char => setLoopMessageAutoReplyRuntimeStatus(char.id, '另一个页面正在监听', 'listening', '为避免重复回复，本连接器当前由另一个标签页或设备处理；关闭其他页面后最多约 90 秒自动接管。'));
+                    successfulGroups += 1;
+                    continue;
+                }
+                if (payload.leaseAcquired !== true) {
+                    throw new Error('连接器版本过旧，请在 Vercel 重新部署最新版连接器后再开启自动回复');
+                }
                 const events = Array.isArray(payload.events) ? payload.events : [];
                 group.characters.forEach(char => {
                     const previousState = loopMessageAutoReplyStates.get(String(char.id));
@@ -22953,7 +23012,12 @@ async function checkLoopMessageAutoReplyNow() {
         if (!health.inboxConnected) {
             throw new Error(health.inboxError || 'Upstash 入站数据库没有连接成功，请检查 Vercel 环境变量并重新部署');
         }
-        const inbox = await callIMessageConnector('/api/inbox?limit=100', connectorConfig, { method: 'GET' });
+        const inbox = await callIMessageConnector(getLoopMessageInboxPath(100), connectorConfig, { method: 'GET' });
+        if (inbox.leaseAcquired === false) {
+            setLoopMessageAutoReplyRuntimeStatus(charId, '另一个页面正在监听', 'listening', '为避免重复回复，当前由另一个标签页或设备处理；关闭其他页面后最多约 90 秒自动接管。');
+            return;
+        }
+        if (inbox.leaseAcquired !== true) throw new Error('连接器版本过旧，请在 Vercel 重新部署最新版连接器');
         const count = Array.isArray(inbox.events) ? inbox.events.length : 0;
         if (count) {
             setLoopMessageAutoReplyRuntimeStatus(charId, `入站队列有 ${count} 条消息 · 准备处理`, 'waiting', '网页会立即匹配角色，并进入防抖或 AI 生成阶段。');

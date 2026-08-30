@@ -38,12 +38,14 @@
 
 当前自动回复使用网站已有的角色人设、聊天记录和 AI API 配置，因此网页需要保持打开。连续入站文字会按角色设置的防抖秒数合并；AI 生成期间如果又收到新消息，会合并后重新生成。入站事件按 `webhook_id` 去重，成功回发后才从队列确认删除。
 
+连接器 2.1 起会在 Upstash 建立唯一监听租约。同一个网站即使同时打开多个标签页、PWA 或设备，也只有一个页面能读取并发送自动回复，避免防抖被重复执行。旧部署必须在 Vercel 重新部署最新版；关闭当前监听页面后，其他页面最多约 90 秒自动接管。
+
 入站文字会暂存在用户自己的 Upstash Redis 中，成功回复后立即删除；未处理消息和去重记录最长保留 7 天。不要与他人共享 Redis REST Token。
 
 ## 接口
 
 - `GET /api/health`：验证网站访问密钥和 LoopMessage API Key。
-- `POST /api/send`：发送一条 iMessage 文字消息；接收 `recipient`、`text`、可选 `senderId` 和 `clientMessageId`。
+- `POST /api/send`：发送一条 iMessage 文字消息；接收 `recipient`、`text`、可选 `senderId`、`clientMessageId` 和自动回复监听身份 `consumerId`。
 - `POST /api/webhook`：接收 LoopMessage 的 `message_inbound` Webhook。
-- `GET /api/inbox`：网站读取尚未回复的入站消息。
+- `GET /api/inbox`：网站携带 `consumerId` 读取尚未回复的入站消息；同一时间仅一个监听页面可取得队列。
 - `POST /api/inbox`：网站在成功回复后确认一组 `webhookIds`。

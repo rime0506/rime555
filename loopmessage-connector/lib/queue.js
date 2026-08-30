@@ -1,7 +1,9 @@
 const INBOX_KEY = 'loopmessage:inbox:v1';
 const EVENT_PREFIX = 'loopmessage:event:v1:';
 const DEDUPE_PREFIX = 'loopmessage:dedupe:v1:';
+const INBOX_CONSUMER_LEASE_KEY = 'loopmessage:inbox:consumer:v1';
 const EVENT_TTL_SECONDS = 7 * 24 * 60 * 60;
+const CONSUMER_LEASE_TTL_SECONDS = 90;
 const MAX_INBOX_ITEMS = 500;
 
 function getRedisConfig() {
@@ -91,10 +93,45 @@ export async function enqueueInboundEvent(event) {
   return Number(result) === 1;
 }
 
-export async function listInboundEvents(limit = 100) {
+export async function assertInboxConsumerLease(consumerId) {
+  const owner = String(consumerId || '').trim();
+  if (!owner || owner.length > 200) {
+    throw Object.assign(new Error('读取入站队列需要有效的 consumerId，请刷新到最新版网站'), {
+      code: 'INVALID_CONSUMER_ID',
+      status: 400
+    });
+  }
+  const script = `
+    local current = redis.call('GET', KEYS[1])
+    if not current then
+      if redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2], 'NX') then
+        return 1
+      end
+      current = redis.call('GET', KEYS[1])
+    end
+    if current == ARGV[1] then
+      redis.call('EXPIRE', KEYS[1], ARGV[2])
+      return 1
+    end
+    return 0
+  `;
+  const result = await redisCommand([
+    'EVAL', script, '1', INBOX_CONSUMER_LEASE_KEY,
+    owner, String(CONSUMER_LEASE_TTL_SECONDS)
+  ]);
+  return Number(result) === 1;
+}
+
+export async function listInboundEvents(limit = 100, consumerId = '') {
   const safeLimit = Math.max(1, Math.min(100, Number(limit) || 100));
+  const leaseAcquired = await assertInboxConsumerLease(consumerId);
+  if (!leaseAcquired) {
+    return { events: [], leaseAcquired: false, leaseTtlSeconds: CONSUMER_LEASE_TTL_SECONDS };
+  }
   const ids = await redisCommand(['ZRANGE', INBOX_KEY, '0', String(safeLimit - 1)]);
-  if (!Array.isArray(ids) || ids.length === 0) return [];
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { events: [], leaseAcquired: true, leaseTtlSeconds: CONSUMER_LEASE_TTL_SECONDS };
+  }
   const values = await redisPipeline(ids.map(id => ['GET', eventKey(id)]));
   const events = [];
   const staleIds = [];
@@ -113,7 +150,7 @@ export async function listInboundEvents(limit = 100) {
   if (staleIds.length) {
     await redisCommand(['ZREM', INBOX_KEY, ...staleIds]).catch(() => {});
   }
-  return events;
+  return { events, leaseAcquired: true, leaseTtlSeconds: CONSUMER_LEASE_TTL_SECONDS };
 }
 
 export async function acknowledgeInboundEvents(webhookIds) {

@@ -8,8 +8,8 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const events = await listInboundEvents(req.query?.limit);
-      return res.status(200).json({ success: true, events });
+      const result = await listInboundEvents(req.query?.limit, req.query?.consumerId);
+      return res.status(200).json({ success: true, ...result });
     }
     if (req.method === 'POST') {
       const body = parseJsonBody(req);
